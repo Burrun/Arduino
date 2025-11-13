@@ -1,10 +1,3 @@
-"""
-Aggregator script that coordinates sensor collectors and backend transport.
-
-Example usage:
-    python module.py --image-dir data/fingerprints --auto-backend
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -20,9 +13,20 @@ from modules.transport import (
 )
 
 
-def collect_sensor_data(image_dir: str, timeout: int) -> Dict[str, str]:
+def collect_rtc_data() -> Dict[str, str]:
     """
-    Capture RTC timestamp + fingerprint image and return payload metadata.
+    Capture RTC timestamp and return payload metadata.
+    """
+    timestamp, source = rtc.get_current_time()
+    return {
+        "timestamp": timestamp.isoformat(),
+        "time_source": source,
+    }
+
+
+def collect_fingerprint_data(image_dir: str, timeout: int) -> Dict[str, str]:
+    """
+    Capture fingerprint image and return payload metadata.
     """
     timestamp, source = rtc.get_current_time()
     filename = f"fingerprint_{timestamp.strftime('%Y%m%d_%H%M%S')}.pgm"
@@ -34,8 +38,6 @@ def collect_sensor_data(image_dir: str, timeout: int) -> Dict[str, str]:
     )
 
     return {
-        "timestamp": timestamp.isoformat(),
-        "time_source": source,
         "fingerprint_image": saved,
     }
 
@@ -59,6 +61,12 @@ def deliver_to_backend(payload: Dict[str, str], client: BackendClient) -> Dict[s
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Sensor data collection orchestrator.")
+    parser.add_argument(
+        "module",
+        nargs="?",
+        choices=["rtc", "fingerprint"],
+        help="Specify a single module to run.",
+    )
     parser.add_argument(
         "--image-dir",
         default="data/fingerprints",
@@ -100,6 +108,17 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+
+    if args.module == "rtc":
+        data = collect_rtc_data()
+        print(f"[모듈] RTC:{data['time_source']} / timestamp:{data['timestamp']}")
+        return 0
+
+    if args.module == "fingerprint":
+        data = collect_fingerprint_data(args.image_dir, args.timeout)
+        print(f"[모듈] Fingerprint saved -> {data['fingerprint_image']}")
+        return 0
+
     data = collect_sensor_data(args.image_dir, args.timeout)
     print(f"[모듈] RTC:{data['time_source']} / timestamp:{data['timestamp']}")
     print(f"[모듈] Fingerprint saved -> {data['fingerprint_image']}")
