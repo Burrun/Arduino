@@ -41,25 +41,55 @@ def connect_fingerprint_sensor(
         )
 
     target_port = port or UART_PORT
+
+    available_ports: List[str] = []
     try:
-        uart = serial.Serial(target_port, baudrate=baudrate or UART_BAUD, timeout=timeout)
-    except (FileNotFoundError, serial.SerialException) as exc:
-        available_ports: List[str] = []
+        from serial.tools import list_ports
+
+        available_ports = [info.device for info in list_ports.comports()]
+    except Exception:
+        available_ports = []
+
+    candidate_ports: List[str] = []
+    if target_port:
+        candidate_ports.append(target_port)
+
+    should_autofallback = not port or target_port not in available_ports
+    if should_autofallback:
+        for detected in available_ports:
+            if detected not in candidate_ports:
+                candidate_ports.append(detected)
+
+    last_exc: Optional[BaseException] = None
+    chosen_port: Optional[str] = None
+    for candidate in candidate_ports:
         try:
-            from serial.tools import list_ports
+            uart = serial.Serial(
+                candidate,
+                baudrate=baudrate or UART_BAUD,
+                timeout=timeout,
+            )
+            chosen_port = candidate
+            break
+        except (FileNotFoundError, serial.SerialException) as exc:
+            last_exc = exc
 
-            available_ports = [info.device for info in list_ports.comports()]
-        except Exception:
-            available_ports = []
-
+    if chosen_port is None:
         hint = (
             "감지된 시리얼 포트가 없습니다. 배선/전원 및 권한을 확인하세요."
             if not available_ports
             else "사용 가능한 포트: " + ", ".join(available_ports)
         )
+        error_port = candidate_ports[0] if candidate_ports else target_port
         raise RuntimeError(
-            f"지정한 포트({target_port})를 열 수 없습니다: {exc}. {hint}"
-        ) from exc
+            f"지정한 포트({error_port})를 열 수 없습니다: {last_exc}. {hint}"
+        ) from last_exc
+
+    if chosen_port != target_port:
+        print(
+            f"[지문] 요청한 포트 {target_port!r} 대신 {chosen_port!r}에 자동 연결했습니다."
+        )
+
 
     finger = adafruit_fingerprint.Adafruit_Fingerprint(uart)
     if finger.count_templates() is None:
