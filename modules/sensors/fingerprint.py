@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import time
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 try:
     import serial
@@ -40,7 +40,27 @@ def connect_fingerprint_sensor(
             "지문 센서를 사용하려면 pyserial 및 adafruit-circuitpython-fingerprint가 필요합니다."
         )
 
-    uart = serial.Serial(port or UART_PORT, baudrate=baudrate or UART_BAUD, timeout=timeout)
+    target_port = port or UART_PORT
+    try:
+        uart = serial.Serial(target_port, baudrate=baudrate or UART_BAUD, timeout=timeout)
+    except (FileNotFoundError, serial.SerialException) as exc:
+        available_ports: List[str] = []
+        try:
+            from serial.tools import list_ports
+
+            available_ports = [info.device for info in list_ports.comports()]
+        except Exception:
+            available_ports = []
+
+        hint = (
+            "감지된 시리얼 포트가 없습니다. 배선/전원 및 권한을 확인하세요."
+            if not available_ports
+            else "사용 가능한 포트: " + ", ".join(available_ports)
+        )
+        raise RuntimeError(
+            f"지정한 포트({target_port})를 열 수 없습니다: {exc}. {hint}"
+        ) from exc
+
     finger = adafruit_fingerprint.Adafruit_Fingerprint(uart)
     if finger.count_templates() is None:
         raise RuntimeError("지문센서 연결 실패(배선/UART/전원 확인).")
