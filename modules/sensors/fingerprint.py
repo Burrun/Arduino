@@ -40,7 +40,7 @@ def connect_fingerprint_sensor(
             "지문 센서를 사용하려면 pyserial 및 adafruit-circuitpython-fingerprint가 필요합니다."
         )
 
-    target_port = port or UART_PORT
+        target_port = port or UART_PORT
 
     available_ports: List[str] = []
     try:
@@ -54,11 +54,22 @@ def connect_fingerprint_sensor(
     if target_port:
         candidate_ports.append(target_port)
 
+    fallback_ports: List[str] = []
+    if UART_PORT and UART_PORT not in fallback_ports:
+        fallback_ports.append(UART_PORT)
+    for extra in ("/dev/ttyAMA0", "/dev/ttyS0", "/dev/serial0"):
+        if extra and extra not in fallback_ports:
+            fallback_ports.append(extra)
+
     should_autofallback = not port or target_port not in available_ports
     if should_autofallback:
         for detected in available_ports:
-            if detected not in candidate_ports:
-                candidate_ports.append(detected)
+            if detected not in fallback_ports:
+                fallback_ports.append(detected)
+
+    for extra in fallback_ports:
+        if extra and extra not in candidate_ports:
+            candidate_ports.append(extra)
 
     last_exc: Optional[BaseException] = None
     chosen_port: Optional[str] = None
