@@ -3,9 +3,9 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
-from modules.sensors import fingerprint, rtc
+from modules.sensors import fingerprint, rtc, signature
 from modules.transport import (
     BackendClient,
     DEFAULT_FILE_ENDPOINT,
@@ -13,64 +13,107 @@ from modules.transport import (
 )
 
 
-def collect_rtc_data() -> Dict[str, str]:
+def deliver_to_backend(
+    metadata: Dict[str, str], client: BackendClient, file_path: Optional[str] = None
+    ) -> Dict[str, dict]:
     """
-    Capture RTC timestamp and return payload metadata.
+    Send metadata and an optional file to the backend.
     """
+    responses = {"metadata": client.send_metadata(metadata)}
+    if file_path:
+        responses["file"] = client.upload_file(file_path)
+    return responses
+
+
+def run_rtc_authentication(client: BackendClient):
+    """
+    Run the RTC authentication process.
+    """
+    print("[인증] RTC 인증을 시작합니다...")
     timestamp, source = rtc.get_current_time()
-    return {
+    metadata = {
+        "auth_type": "rtc",
         "timestamp": timestamp.isoformat(),
         "time_source": source,
     }
+    print(f"RTC 데이터: {metadata}")
+    if client:
+        responses = deliver_to_backend(metadata, client)
+        print("[인증] 백엔드 응답:", responses)
 
 
-def collect_fingerprint_data(image_dir: str, timeout: int) -> Dict[str, str]:
+def run_fingerprint_authentication(
+    client: BackendClient, image_dir: str, timeout: int
+):
     """
-    Capture fingerprint image and return payload metadata.
+    Run the fingerprint authentication process.
     """
-    timestamp, source = rtc.get_current_time()
+    print("[인증] 지문 인증을 시작합니다...")
+    timestamp, _ = rtc.get_current_time()
     filename = f"fingerprint_{timestamp.strftime('%Y%m%d_%H%M%S')}.pgm"
     image_path = Path(image_dir) / filename
 
     finger = fingerprint.connect_fingerprint_sensor()
-    saved = fingerprint.capture_fingerprint_image(
+    saved_path = fingerprint.capture_fingerprint_image(
         finger, save_path=str(image_path), timeout_sec=timeout
     )
+    print(f"지문 이미지가 저장되었습니다: {saved_path}")
 
-    return {
-        "fingerprint_image": saved,
-    }
+    if client:
+        metadata = {
+            "auth_type": "fingerprint",
+            "timestamp": timestamp.isoformat(),
+            "filename": Path(saved_path).name,
+        }
+        responses = deliver_to_backend(metadata, client, file_path=saved_path)
+        print("[인증] 백엔드 응답:", responses)
 
 
-def deliver_to_backend(payload: Dict[str, str], client: BackendClient) -> Dict[str, dict]:
+def run_signature_authentication(client: BackendClient, signature_dir: str):
     """
-    Send metadata and fingerprint file to backend.
+    Run the signature authentication process.
     """
-    responses = {
-        "metadata": client.send_metadata(
-            {
-                "timestamp": payload["timestamp"],
-                "time_source": payload["time_source"],
-                "filename": Path(payload["fingerprint_image"]).name,
-            }
-        ),
-        "file": client.upload_file(payload["fingerprint_image"]),
-    }
-    return responses
+    print("[인증] 서명 인증을 시작합니다...")
+    timestamp, _ = rtc.get_current_time()
+    saved_path = signature.capture_signature()
+    # This is a placeholder, so we'll create a dummy file name
+    filename = f"signature_{timestamp.strftime('%Y%m%d_%H%M%S')}.png"
+    print(f"서명 파일: {filename}")
+
+    if client:
+        metadata = {
+            "auth_type": "signature",
+            "timestamp": timestamp.isoformat(),
+            "filename": filename,
+        }
+        # In a real scenario, saved_path would be the actual path to the saved signature
+        responses = deliver_to_backend(metadata, client, file_path=saved_path)
+        print("[인증] 백엔드 응답:", responses)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Sensor data collection orchestrator.")
+    parser = argparse.ArgumentParser(
+        description="Authenticator device main script.",
+        epilog="""
+        This script is designed to be run on a Raspberry Pi.
+        It can be triggered by other processes or scripts to perform a specific authentication.
+        Example: python3 main.py fingerprint --auto-backend
+        """,
+    )
     parser.add_argument(
         "module",
-        nargs="?",
-        choices=["rtc", "fingerprint"],
-        help="Specify a single module to run.",
+        choices=["rtc", "fingerprint", "signature"],
+        help="The authentication module to run.",
     )
     parser.add_argument(
         "--image-dir",
         default="data/fingerprints",
         help="Directory to store captured fingerprint images.",
+    )
+    parser.add_argument(
+        "--signature-dir",
+        default="data/signatures",
+        help="Directory to store captured signature images.",
     )
     parser.add_argument(
         "--timeout",
@@ -81,17 +124,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--auto-backend",
         action="store_true",
-        help="Send results to backend if configuration is available.",
+        help="Send results to the backend.",
     )
     parser.add_argument(
         "--base-url",
         default=None,
-        help="Override backend base URL (otherwise BACKEND_BASE_URL env is used).",
+        help="Override backend base URL.",
     )
     parser.add_argument(
         "--api-key",
         default=None,
-        help="Optional API key for backend Authorization header.",
+        help="Optional API key for the backend.",
     )
     parser.add_argument(
         "--metadata-endpoint",
@@ -108,21 +151,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-
-    if args.module == "rtc":
-        data = collect_rtc_data()
-        print(f"[모듈] RTC:{data['time_source']} / timestamp:{data['timestamp']}")
-        return 0
-
-    if args.module == "fingerprint":
-        data = collect_fingerprint_data(args.image_dir, args.timeout)
-        print(f"[모듈] Fingerprint saved -> {data['fingerprint_image']}")
-        return 0
-
-    data = collect_sensor_data(args.image_dir, args.timeout)
-    print(f"[모듈] RTC:{data['time_source']} / timestamp:{data['timestamp']}")
-    print(f"[모듈] Fingerprint saved -> {data['fingerprint_image']}")
-
+    client = None
     if args.auto_backend:
         client = BackendClient(
             base_url=args.base_url,
@@ -130,13 +159,17 @@ def main() -> int:
             metadata_endpoint=args.metadata_endpoint or DEFAULT_METADATA_ENDPOINT,
             file_endpoint=args.file_endpoint or DEFAULT_FILE_ENDPOINT,
         )
-        try:
-            responses = deliver_to_backend(data, client)
-            print("[모듈] Backend metadata response:", responses["metadata"])
-            print("[모듈] Backend file response:", responses["file"])
-        except Exception as exc:  # pragma: no cover - runtime reporting
-            print(f"[모듈] Backend 전송 실패: {exc}")
-            return 2
+
+    try:
+        if args.module == "rtc":
+            run_rtc_authentication(client)
+        elif args.module == "fingerprint":
+            run_fingerprint_authentication(client, args.image_dir, args.timeout)
+        elif args.module == "signature":
+            run_signature_authentication(client, args.signature_dir)
+    except Exception as exc:
+        print(f"[오류] 인증 프로세스 실패: {exc}", file=sys.stderr)
+        return 1
 
     return 0
 
