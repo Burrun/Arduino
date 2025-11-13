@@ -40,7 +40,7 @@ def connect_fingerprint_sensor(
             "지문 센서를 사용하려면 pyserial 및 adafruit-circuitpython-fingerprint가 필요합니다."
         )
 
-        target_port = port or UART_PORT
+    target_port = port or UART_PORT
 
     available_ports: List[str] = []
     try:
