@@ -144,7 +144,7 @@ def capture_fingerprint_image(
     data_list = finger.get_fpdata(sensorbuffer="image")  # List[int]
     raw = bytes(data_list)
 
-    len=width*height
+    num_pixels=width*height
 
     save_path = str(save_path)
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
@@ -153,14 +153,14 @@ def capture_fingerprint_image(
     with open(save_path, "wb") as file:
         header = f"P5\n{width} {height}\n255\n".encode("ascii")
         file.write(header)
-        if len(raw) >= len:
-            file.write(raw[:len])
+        if len(raw) >= num_pixels:
+            file.write(raw[:num_pixels])
         else:
-            file.write(raw + bytes([0]) * (len - len(raw)))
+            file.write(raw + bytes([0]) * (num_pixels - len(raw)))
     
     print(f"[지문] PGM 저장: {save_path}")
 
-    # 👇 PNG 자동 변환
+    # png 변환
     if auto_convert_png:
         try:
             from PIL import Image
