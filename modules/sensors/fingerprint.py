@@ -1,25 +1,25 @@
 """
+AS608 fingerprint sensor module.
 Fingerprint sensor helpers (Adafruit/ZFM series).
-
-Isolated so the acquisition logic can be reused by scripts that either save
-images locally or forward them to a backend.
 """
 
 from __future__ import annotations
 
 import os
 import time
+
 from pathlib import Path
 from typing import List, Optional
 
-try:
+try:   
     import serial
+    from serial.tools import list_ports
     import adafruit_fingerprint
-
     HAS_FINGERPRINT_DEPS = True
 except Exception:  # pragma: no cover - dev hosts often miss hardware deps
     serial = None
     adafruit_fingerprint = None
+    list_ports = None
     HAS_FINGERPRINT_DEPS = False
 
 UART_PORT = os.environ.get("FP_UART", "/dev/serial0")
@@ -44,7 +44,7 @@ def connect_fingerprint_sensor(
 
     available_ports: List[str] = []
     try:
-        from serial.tools import list_ports
+      
 
         available_ports = [info.device for info in list_ports.comports()]
     except Exception:
@@ -103,8 +103,8 @@ def connect_fingerprint_sensor(
 
 
     finger = adafruit_fingerprint.Adafruit_Fingerprint(uart)
-    if finger.count_templates() is None:
-        raise RuntimeError("지문센서 연결 실패(배선/UART/전원 확인).")
+    if finger.count_templates() != adafruit_fingerprint.OK:
+        raise RuntimeError("지문센서 연결 실패(배선/UART/전원 확인).") from None
     return finger
 
 
@@ -132,14 +132,16 @@ def capture_fingerprint_image(
     else:
         raise TimeoutError("지문 인식 시간 초과")
 
-    raw = bytearray()
-    if finger.download_image(raw) != adafruit_fingerprint.OK:
-        raise RuntimeError("이미지 다운로드 실패")
+    # 👇 여기서 image 데이터 가져오기
+    data_list = finger.get_fpdata(sensorbuffer="image")  # List[int]
+    raw = bytes(data_list)
 
     expected_len = width * height
     if len(raw) != expected_len:
+        # 센서마다 해상도/포맷이 다를 수 있어서 경고만
         print(
-            f"[경고] 예상 바이트({expected_len}) != 수신({len(raw)}). 모델/해상도 확인 필요."
+            f"[경고] 예상 바이트({expected_len}) != 수신({len(raw)}). "
+            "모델/해상도 확인 필요."
         )
 
     save_path = str(save_path)
