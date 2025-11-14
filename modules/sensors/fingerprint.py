@@ -24,6 +24,7 @@ except Exception:  # pragma: no cover - dev hosts often miss hardware deps
 
 UART_PORT = os.environ.get("FP_UART", "/dev/serial0")
 UART_BAUD = int(os.environ.get("FP_UART_BAUD", "57600"))
+print(f"[DEBUG] target UART_PORT={UART_PORT}, UART_BAUD={UART_BAUD}")
 
 
 def connect_fingerprint_sensor(
