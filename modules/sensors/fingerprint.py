@@ -74,6 +74,8 @@ def connect_fingerprint_sensor(
 
     last_exc: Optional[BaseException] = None
     chosen_port: Optional[str] = None
+    uart = None
+
     for candidate in candidate_ports:
         try:
             uart = serial.Serial(
@@ -102,6 +104,10 @@ def connect_fingerprint_sensor(
             f"[지문] 요청한 포트 {target_port!r} 대신 {chosen_port!r}에 자동 연결했습니다."
         )
 
+    time.sleep(0.1)
+    uart.reset_input_buffer()
+    uart.reset_output_buffer()
+    time.sleep(0.1)
 
     finger = adafruit_fingerprint.Adafruit_Fingerprint(uart)
     if finger.count_templates() != adafruit_fingerprint.OK:
@@ -113,8 +119,8 @@ def capture_fingerprint_image(
     finger,
     save_path: str = "fingerprint.pgm",
     timeout_sec: int = 10,
-    width: int = 256,
-    height: int = 288,
+    width: int = 192,
+    height: int = 192,
 ) -> str:
     """
     Capture a fingerprint image and store it as binary PGM (P5) file.
@@ -133,27 +139,21 @@ def capture_fingerprint_image(
     else:
         raise TimeoutError("지문 인식 시간 초과")
 
-    # 👇 여기서 image 데이터 가져오기
+    # image 데이터 가져오기
     data_list = finger.get_fpdata(sensorbuffer="image")  # List[int]
     raw = bytes(data_list)
 
-    expected_len = width * height
-    if len(raw) != expected_len:
-        # 센서마다 해상도/포맷이 다를 수 있어서 경고만
-        print(
-            f"[경고] 예상 바이트({expected_len}) != 수신({len(raw)}). "
-            "모델/해상도 확인 필요."
-        )
+    len=width*height
 
     save_path = str(save_path)
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     with open(save_path, "wb") as file:
         header = f"P5\n{width} {height}\n255\n".encode("ascii")
         file.write(header)
-        if len(raw) >= expected_len:
-            file.write(raw[:expected_len])
+        if len(raw) >= len:
+            file.write(raw[:len])
         else:
-            file.write(raw + bytes([0]) * (expected_len - len(raw)))
+            file.write(raw + bytes([0]) * (len - len(raw)))
 
     return save_path
 

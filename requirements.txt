@@ -17,3 +17,4 @@ requests==2.32.5
 sysv_ipc==1.1.0
 typing_extensions==4.15.0
 urllib3==2.5.0
+pillow==12.0.0
