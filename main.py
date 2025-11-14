@@ -57,7 +57,6 @@ def run_fingerprint_authentication(
     saved_path = fingerprint.capture_fingerprint_image(
         finger, save_path=str(image_path), timeout_sec=timeout
     )
-    print(f"지문 이미지가 저장되었습니다: {saved_path}")
 
     if client:
         metadata = {

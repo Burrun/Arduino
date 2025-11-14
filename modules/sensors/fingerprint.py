@@ -144,7 +144,9 @@ def capture_fingerprint_image(
     data_list = finger.get_fpdata(sensorbuffer="image")  # List[int]
     raw = bytes(data_list)
 
-    num_pixels=width*height
+    expected_size=width*height
+    
+    print("raw length =", len(raw), "expected =", width * height)
 
     save_path = str(save_path)
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
@@ -153,25 +155,20 @@ def capture_fingerprint_image(
     with open(save_path, "wb") as file:
         header = f"P5\n{width} {height}\n255\n".encode("ascii")
         file.write(header)
-        if len(raw) >= num_pixels:
-            file.write(raw[:num_pixels])
+        if len(raw) >= expected_size:
+            file.write(raw[:expected_size])
         else:
-            file.write(raw + bytes([0]) * (num_pixels - len(raw)))
+            file.write(raw + bytes([0]) * (expected_size - len(raw)))
     
     print(f"[지문] PGM 저장: {save_path}")
 
     # png 변환
     if auto_convert_png:
-        try:
-            from PIL import Image
-            png_path = Path(save_path).with_suffix('.png')
-            img = Image.open(save_path)
-            img.save(png_path)
-            print(f"[지문] PNG 저장: {png_path}")
-        except ImportError:
-            print("[지문] PNG 변환 스킵 (Pillow 미설치)")
-        except Exception as e:
-            print(f"[지문] PNG 변환 실패: {e}")
+        from PIL import Image
+        png_path = Path(save_path).with_suffix('.png')
+        img = Image.open(save_path)
+        img.save(png_path)
+        print(f"[지문] PNG 저장: {png_path}")
     
     
 
