@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 PGM 지문 이미지를 PNG로 변환하고 보기
+사용법 : python3 view_fingerprint.py all
 """
 import sys
 from pathlib import Path

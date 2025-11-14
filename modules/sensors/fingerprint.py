@@ -121,6 +121,7 @@ def capture_fingerprint_image(
     timeout_sec: int = 10,
     width: int = 192,
     height: int = 192,
+    auto_convert_png:bool = True,
 ) -> str:
     """
     Capture a fingerprint image and store it as binary PGM (P5) file.
@@ -147,6 +148,8 @@ def capture_fingerprint_image(
 
     save_path = str(save_path)
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+    
+    # PGM 파일 저장
     with open(save_path, "wb") as file:
         header = f"P5\n{width} {height}\n255\n".encode("ascii")
         file.write(header)
@@ -154,6 +157,23 @@ def capture_fingerprint_image(
             file.write(raw[:len])
         else:
             file.write(raw + bytes([0]) * (len - len(raw)))
+    
+    print(f"[지문] PGM 저장: {save_path}")
+
+    # 👇 PNG 자동 변환
+    if auto_convert_png:
+        try:
+            from PIL import Image
+            png_path = Path(save_path).with_suffix('.png')
+            img = Image.open(save_path)
+            img.save(png_path)
+            print(f"[지문] PNG 저장: {png_path}")
+        except ImportError:
+            print("[지문] PNG 변환 스킵 (Pillow 미설치)")
+        except Exception as e:
+            print(f"[지문] PNG 변환 실패: {e}")
+    
+    
 
     return save_path
 
