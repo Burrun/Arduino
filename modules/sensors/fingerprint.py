@@ -30,7 +30,7 @@ print(f"[DEBUG] target UART_PORT={UART_PORT}, UART_BAUD={UART_BAUD}")
 def connect_fingerprint_sensor(
     port: Optional[str] = None,
     baudrate: Optional[int] = None,
-    timeout: float = 1.0,
+    timeout: float = 2.0,
 ):
     """
     Open UART connection and return `adafruit_fingerprint.Adafruit_Fingerprint`.
