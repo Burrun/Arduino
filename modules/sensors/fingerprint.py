@@ -120,7 +120,7 @@ def capture_fingerprint_image(
     save_path: str = "fingerprint.pgm",
     timeout_sec: int = 10,
     width: int = 256,
-    height: int = 288,
+    height: int = 144,
     auto_convert_png: bool = True,
 ) -> str:
     """
