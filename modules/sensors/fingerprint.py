@@ -148,15 +148,7 @@ def capture_fingerprint_image(
         raise RuntimeError("센서에서 이미지 데이터를 받지 못했습니다")
     
     raw = bytes(data_list)
-    expected_size = width * height
-    
-    print(f"[DEBUG] 수신 데이터: {len(raw)} bytes, 예상 크기: {expected_size} bytes ({width}x{height})")
-    
-    # 데이터 크기가 너무 다르면 경고
-    if len(raw) < expected_size * 0.9:  # 10% 이상 작으면
-        print(f"[경고] 데이터 크기 불일치! 수신: {len(raw)}, 예상: {expected_size}")
-        print(f"[경고] 이미지가 불완전할 수 있습니다")
-    
+    expected_size = width * height    
     save_path = str(save_path)
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     
