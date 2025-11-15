@@ -121,7 +121,7 @@ def capture_fingerprint_image(
     timeout_sec: int = 10,
     width: int = 192,
     height: int = 192,
-    auto_convert_png:bool = True,
+    auto_convert_png: bool = True,
 ) -> str:
     """
     Capture a fingerprint image and store it as binary PGM (P5) file.
@@ -141,13 +141,22 @@ def capture_fingerprint_image(
         raise TimeoutError("지문 인식 시간 초과")
 
     # image 데이터 가져오기
+    print("[지문] 이미지 데이터 읽는 중...")
     data_list = finger.get_fpdata(sensorbuffer="image")  # List[int]
-    raw = bytes(data_list)
-
-    expected_size=width*height
     
-    print("raw length =", len(raw), "expected =", width * height)
-
+    if not data_list:
+        raise RuntimeError("센서에서 이미지 데이터를 받지 못했습니다")
+    
+    raw = bytes(data_list)
+    expected_size = width * height
+    
+    print(f"[DEBUG] 수신 데이터: {len(raw)} bytes, 예상 크기: {expected_size} bytes ({width}x{height})")
+    
+    # 데이터 크기가 너무 다르면 경고
+    if len(raw) < expected_size * 0.9:  # 10% 이상 작으면
+        print(f"[경고] 데이터 크기 불일치! 수신: {len(raw)}, 예상: {expected_size}")
+        print(f"[경고] 이미지가 불완전할 수 있습니다")
+    
     save_path = str(save_path)
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     
@@ -155,24 +164,30 @@ def capture_fingerprint_image(
     with open(save_path, "wb") as file:
         header = f"P5\n{width} {height}\n255\n".encode("ascii")
         file.write(header)
+        
         if len(raw) >= expected_size:
+            # 데이터가 충분하면 필요한 만큼만 사용
             file.write(raw[:expected_size])
         else:
-            file.write(raw + bytes([0]) * (expected_size - len(raw)))
+            # 데이터가 부족하면 0으로 패딩
+            file.write(raw)
+            padding_size = expected_size - len(raw)
+            file.write(bytes([0]) * padding_size)
+            print(f"[지문] {padding_size} bytes 패딩 추가됨")
     
-    print(f"[지문] PGM 저장: {save_path}")
+    print(f"[지문] PGM 저장 완료: {save_path}")
 
     # png 변환
     if auto_convert_png:
-        from PIL import Image
-        png_path = Path(save_path).with_suffix('.png')
-        img = Image.open(save_path)
-        img.save(png_path)
-        print(f"[지문] PNG 저장: {png_path}")
+        try:
+            from PIL import Image
+            png_path = Path(save_path).with_suffix('.png')
+            img = Image.open(save_path)
+            img.save(png_path)
+            print(f"[지문] PNG 저장 완료: {png_path}")
+        except Exception as e:
+            print(f"[경고] PNG 변환 실패: {e}")
     
-    
-
     return save_path
-
 
 __all__ = ["connect_fingerprint_sensor", "capture_fingerprint_image"]
