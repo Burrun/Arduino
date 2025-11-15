@@ -12,13 +12,15 @@ from datetime import datetime
 
 try:
     import smbus
-except ImportError:
-    import smbus2 as smbus
-
     HAS_SMBUS = True
-except Exception:  # pragma: no cover - defensive on headless dev hosts
-    smbus = None
-    HAS_SMBUS = False
+except ImportError:
+    try:
+        import smbus2 as smbus
+        HAS_SMBUS = True
+  
+    except ImportError:  
+        smbus = None
+        HAS_SMBUS = False
 
 I2C_BUS_NUM = int(os.environ.get("RTC_I2C_BUS", "1"))
 
