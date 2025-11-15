@@ -12,6 +12,8 @@ from datetime import datetime
 
 try:
     import smbus
+except ImportError:
+    import smbus2 as smbus
 
     HAS_SMBUS = True
 except Exception:  # pragma: no cover - defensive on headless dev hosts
