@@ -24,8 +24,7 @@ except ImportError:
 
 I2C_BUS_NUM = int(os.environ.get("RTC_I2C_BUS", "1"))
 
-# DS1307 / DS3231 둘 다 기본 I2C 주소는 0x68
-# 예전 환경변수(DS3231_ADDR)를 그대로 써도 동작하게 유지
+# DS3231 기본 I2C 주소는 0x68
 RTC_I2C_ADDR = int(os.environ.get("RTC_I2C_ADDR", os.environ.get("DS3231_ADDR", "0x68")), 16)
 
 
@@ -188,12 +187,10 @@ def set_rtc(dt: datetime, bus_num: int | None = None, address: int | None = None
 # ---- 기존 DS3231 전용 이름과의 호환용 래퍼 ----
 
 def read_rtc_ds3231(bus_num: int | None = None, address: int | None = None) -> datetime:
-    """과거 코드 호환용 래퍼: DS3231 전용 이름이지만 DS1307/DS3231 모두 지원."""
     return read_rtc(bus_num=bus_num, address=address)
 
 
 def set_rtc_ds3231(dt: datetime, bus_num: int | None = None, address: int | None = None) -> None:
-    """과거 코드 호환용 래퍼: DS3231 전용 이름이지만 DS1307/DS3231 모두 지원."""
     return set_rtc(dt=dt, bus_num=bus_num, address=address)
 
 
