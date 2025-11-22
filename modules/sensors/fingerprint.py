@@ -141,7 +141,7 @@ def capture_fingerprint_image(
         raise TimeoutError("지문 인식 시간 초과")
 
     # image 데이터 가져오기
-    print("[지문] 이미지 데이터 읽는 중...")
+    print("[지문] 지문 인식 성공! 이미지 데이터 다운로드 중... (약 5-10초 소요)")
     data_list = finger.get_fpdata(sensorbuffer="image")  # List[int]
     
     if not data_list:
@@ -175,8 +175,10 @@ def capture_fingerprint_image(
             from PIL import Image
             png_path = Path(save_path).with_suffix('.png')
             img = Image.open(save_path)
+            # Resize to a proper size (256x288 is standard for these sensors)
+            img = img.resize((256, 288), Image.LANCZOS)
             img.save(png_path)
-            print(f"[지문] PNG 저장 완료: {png_path}")
+            print(f"[지문] PNG 저장 완료 (256x288): {png_path}")
         except Exception as e:
             print(f"[경고] PNG 변환 실패: {e}")
     
