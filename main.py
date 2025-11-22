@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Dict, Optional
 
-from modules.sensors import fingerprint, rtc, signature
+from modules.sensors import fingerprint, rtc, signature, camera, gps
 from modules.transport import (
     BackendClient,
     DEFAULT_FILE_ENDPOINT,
@@ -90,6 +90,51 @@ def run_signature_authentication(client: BackendClient, signature_dir: str):
         print("[인증] 백엔드 응답:", responses)
 
 
+def run_camera_authentication(
+    client: BackendClient, image_dir: str, timeout: int, esp32_url: Optional[str] = None
+):
+    """
+    Run the camera authentication process.
+    """
+    print("[인증] 카메라 촬영을 시작합니다...")
+    timestamp, _ = rtc.get_current_time()
+    filename = f"camera_{timestamp.strftime('%Y%m%d_%H%M%S')}.jpg"
+    image_path = Path(image_dir) / filename
+
+    saved_path = camera.capture_image(
+        save_path=str(image_path), timeout=timeout, base_url=esp32_url
+    )
+
+    if client:
+        metadata = {
+            "auth_type": "camera",
+            "timestamp": timestamp.isoformat(),
+            "filename": Path(saved_path).name,
+        }
+        responses = deliver_to_backend(metadata, client, file_path=saved_path)
+        print("[인증] 백엔드 응답:", responses)
+
+
+def run_gps_authentication(client: BackendClient, esp32_url: Optional[str] = None):
+    """
+    Run the GPS authentication process.
+    """
+    print("[인증] GPS 위치 확인을 시작합니다...")
+    timestamp, _ = rtc.get_current_time()
+    
+    location = gps.get_current_location(timeout=10, base_url=esp32_url)
+    print(f"GPS 데이터: {location}")
+
+    if client:
+        metadata = {
+            "auth_type": "gps",
+            "timestamp": timestamp.isoformat(),
+            "latitude": location["latitude"],
+            "longitude": location["longitude"],
+        }
+        responses = deliver_to_backend(metadata, client)
+        print("[인증] 백엔드 응답:", responses)
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Authenticator device main script.",
@@ -101,7 +146,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "module",
-        choices=["rtc", "fingerprint", "signature"],
+        choices=["rtc", "fingerprint", "signature", "camera", "gps"],
         help="The authentication module to run.",
     )
     parser.add_argument(
@@ -145,6 +190,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Override file upload endpoint path.",
     )
+    parser.add_argument(
+        "--esp32-url",
+        default=None,
+        help="URL of the ESP32-CAM module (for camera/gps).",
+    )
     return parser.parse_args()
 
 
@@ -166,6 +216,10 @@ def main() -> int:
             run_fingerprint_authentication(client, args.image_dir, args.timeout)
         elif args.module == "signature":
             run_signature_authentication(client, args.signature_dir)
+        elif args.module == "camera":
+            run_camera_authentication(client, args.image_dir, args.timeout, args.esp32_url)
+        elif args.module == "gps":
+            run_gps_authentication(client, args.esp32_url)
     except Exception as exc:
         print(f"[오류] 인증 프로세스 실패: {exc}", file=sys.stderr)
         return 1
