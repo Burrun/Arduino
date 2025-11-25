@@ -14,6 +14,11 @@ from modules.sensors import rtc, fingerprint, signature, camera, gps
 
 app = FastAPI()
 
+# Configuration
+# ESP32-CAM IP Address (Default: 192.168.4.1 for AP mode)
+# If your ESP32 is connected to your router, change this to its assigned IP.
+ESP32_CAM_URL = os.getenv("ESP32_CAM_URL", "http://192.168.4.1")
+
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
@@ -74,8 +79,12 @@ async def trigger_camera():
         filename = f"camera_{timestamp.strftime('%Y%m%d_%H%M%S')}.jpg"
         image_path = image_dir / filename
         
-        # Use default ESP32 URL or from env
-        saved_path = camera.capture_image(save_path=str(image_path), timeout=10)
+        # Pass the configured ESP32 URL
+        saved_path = camera.capture_image(
+            save_path=str(image_path), 
+            timeout=10, 
+            base_url=ESP32_CAM_URL
+        )
         
         return {"status": "success", "message": "Camera captured", "path": saved_path}
     except Exception as e:
@@ -84,7 +93,11 @@ async def trigger_camera():
 @app.get("/api/gps")
 async def get_gps_location():
     try:
-        location = gps.get_current_location(timeout=10)
+        # Pass the configured ESP32 URL
+        location = gps.get_current_location(
+            timeout=10, 
+            base_url=ESP32_CAM_URL
+        )
         return {"status": "success", "data": location}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -107,4 +120,5 @@ async def trigger_signature():
 
 if __name__ == "__main__":
     import uvicorn
+    print(f"Starting server... ESP32-CAM URL: {ESP32_CAM_URL}")
     uvicorn.run(app, host="0.0.0.0", port=5000)
