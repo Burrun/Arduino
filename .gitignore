@@ -8,10 +8,7 @@ build/
 dist/
 *.egg-info/
 
-# Virtual environments
 venv/
-.env/
-.venv/
 
 # Editor / OS
 .idea/
@@ -19,3 +16,7 @@ venv/
 *.swp
 Thumbs.db
 *.DS_Store
+
+
+#
+*.Identifier

@@ -1,17 +1,19 @@
 <script>
     import Button from "../lib/Button.svelte";
     import StepIndicator from "../lib/StepIndicator.svelte";
+    import SignaturePad from "../lib/SignaturePad.svelte";
     import { currentStep, authData } from "../lib/store";
     import { api } from "../lib/api";
 
     let status = "idle";
     let message = "Sign on the pad below";
 
-    async function capture() {
+    async function handleSave(event) {
+        const imageData = event.detail;
         status = "capturing";
         message = "Recording signature...";
         try {
-            const res = await api.captureSignature();
+            const res = await api.captureSignature(imageData);
             $authData.signature = res.data.path;
             status = "success";
             message = "Signature recorded!";
@@ -31,23 +33,19 @@
     <h2 class="title">Digital Signature</h2>
 
     <div class="content center column">
-        <div class="pad-box" class:success={status === "success"}>
-            {#if status === "success"}
+        {#if status !== "success"}
+            <SignaturePad on:save={handleSave} />
+        {:else}
+            <div class="pad-box success">
                 <span class="check">✓</span>
-            {:else}
-                <span class="pen">🖊️</span>
-            {/if}
-        </div>
+            </div>
+        {/if}
         <p class="status-text">{message}</p>
     </div>
 
     <div class="footer">
         <Button onClick={() => ($currentStep = 5)}>Back</Button>
-        {#if status !== "success"}
-            <Button primary onClick={capture} disabled={status === "capturing"}>
-                {status === "capturing" ? "Signing..." : "Capture Signature"}
-            </Button>
-        {:else}
+        {#if status === "success"}
             <Button primary onClick={next}>Next</Button>
         {/if}
     </div>
