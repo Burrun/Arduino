@@ -45,4 +45,28 @@
     flex: 1;
     overflow: hidden;
   }
+
+  .skip-btn {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 10px 20px;
+    background-color: #ff4444;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    z-index: 9999;
+    font-weight: bold;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+  }
+
+  .skip-btn:hover {
+    opacity: 1;
+  }
 </style>
+
+<button class="skip-btn" on:click={() => $currentStep++}>
+  SKIP (Test)
+</button>
