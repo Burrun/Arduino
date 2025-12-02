@@ -6,24 +6,41 @@
 
     let checking = true;
     let error = null;
+    let hasFailed = false;
 
     onMount(async () => {
         try {
-            // Check RTC
-            await api.getRTC();
-            $sensorStatus.rtc = true;
+            // Check all sensors using the new status endpoint
+            const response = await fetch("/api/sensors/status");
+            if (!response.ok) {
+                throw new Error("Failed to check sensors");
+            }
 
-            // Simulate other checks (since we don't have endpoints for status yet)
-            setTimeout(() => {
-                $sensorStatus.fingerprint = true;
-                $sensorStatus.camera = true;
-                $sensorStatus.gps = true;
-                $sensorStatus.signature = true;
-                checking = false;
-            }, 1500);
+            const status = await response.json();
+
+            // Update sensor status
+            $sensorStatus.rtc = status.rtc;
+            $sensorStatus.fingerprint = status.fingerprint;
+            $sensorStatus.camera = status.camera;
+            $sensorStatus.gps = status.gps;
+            $sensorStatus.signature = status.signature;
+
+            // Check if any sensor failed
+            hasFailed =
+                !status.rtc ||
+                !status.fingerprint ||
+                !status.camera ||
+                !status.gps;
+
+            if (hasFailed) {
+                error = "One or more sensors failed. Please check connections.";
+            }
+
+            checking = false;
         } catch (e) {
             error = "Failed to connect to sensors. Ensure backend is running.";
             checking = false;
+            hasFailed = true;
         }
     });
 
@@ -41,19 +58,47 @@
         {/if}
 
         <div class="grid">
-            <div class="item" class:ok={$sensorStatus.rtc}>RTC Clock</div>
-            <div class="item" class:ok={$sensorStatus.fingerprint}>
+            <div
+                class="item"
+                class:ok={$sensorStatus.rtc}
+                class:failed={!checking && !$sensorStatus.rtc}
+            >
+                RTC Clock
+            </div>
+            <div
+                class="item"
+                class:ok={$sensorStatus.fingerprint}
+                class:failed={!checking && !$sensorStatus.fingerprint}
+            >
                 Fingerprint
             </div>
-            <div class="item" class:ok={$sensorStatus.camera}>Camera</div>
-            <div class="item" class:ok={$sensorStatus.gps}>GPS</div>
-            <div class="item" class:ok={$sensorStatus.signature}>Signature</div>
+            <div
+                class="item"
+                class:ok={$sensorStatus.camera}
+                class:failed={!checking && !$sensorStatus.camera}
+            >
+                Camera
+            </div>
+            <div
+                class="item"
+                class:ok={$sensorStatus.gps}
+                class:failed={!checking && !$sensorStatus.gps}
+            >
+                GPS
+            </div>
+            <div
+                class="item"
+                class:ok={$sensorStatus.signature}
+                class:failed={!checking && !$sensorStatus.signature}
+            >
+                Signature
+            </div>
         </div>
     </div>
 
     <div class="footer">
         <Button onClick={() => ($currentStep = 0)}>Back</Button>
-        <Button primary disabled={checking || error} onClick={next}>
+        <Button primary disabled={checking || hasFailed} onClick={next}>
             {checking ? "Checking..." : "Continue"}
         </Button>
     </div>
@@ -75,6 +120,10 @@
     .item.ok {
         border-left-color: #4caf50;
         background: #2e3b2f;
+    }
+    .item.failed {
+        border-left-color: #f44336;
+        background: #3d2222;
     }
     .error {
         color: #ff4444;

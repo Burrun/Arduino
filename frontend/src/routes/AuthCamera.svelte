@@ -13,10 +13,6 @@
         message = "Capturing...";
         try {
             const res = await api.captureCamera();
-            // Assuming backend returns a path we can serve via static files
-            // Since server.py mounts frontend/dist, we might need to adjust how we serve data files.
-            // For now, let's just show a placeholder or the path.
-            // Actually, server.py doesn't mount /data. We should probably add that to server.py or just trust it works.
             $authData.camera = res.data.path;
             imagePath = res.data.path;
             status = "success";
@@ -60,11 +56,15 @@
 </div>
 
 <style>
+    .content {
+        padding-top: 5px !important;
+        justify-content: flex-start !important;
+    }
     .camera-box {
-        width: 320px;
-        height: 240px;
+        width: 550px;
+        height: 400px;
         background: #000;
-        margin-bottom: 20px;
+        margin-bottom: 5px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -72,5 +72,8 @@
     }
     .placeholder {
         color: #666;
+    }
+    .status-text {
+        margin-top: 5px;
     }
 </style>

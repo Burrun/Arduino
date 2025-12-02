@@ -56,23 +56,23 @@
 
 <style>
     .question {
-        font-size: 1.5rem;
-        margin-bottom: 30px;
+        font-size: 1.4rem;
+        margin-bottom: 15px;
     }
     .options {
-        display: flex;
-        flex-direction: column;
-        gap: 15px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
         width: 100%;
-        max-width: 400px;
+        max-width: 650px;
     }
     .option {
-        padding: 20px;
+        padding: 15px 10px;
         background: #333;
         border: 2px solid #444;
         border-radius: 8px;
-        text-align: left;
-        font-size: 1.2rem;
+        text-align: center;
+        font-size: 1.1rem;
     }
     .option.selected {
         border-color: #646cff;

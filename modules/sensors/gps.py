@@ -45,3 +45,17 @@ def get_current_location(
         time.sleep(1)
 
     raise TimeoutError("GPS 응답 시간 초과")
+
+def is_gps_connected(base_url: Optional[str] = None, timeout: int = 3) -> bool:
+    """
+    Check if GPS module is reachable via ESP32.
+    Returns True if GPS is available, False otherwise.
+    """
+    try:
+        target_url = (base_url or ESP32_CAM_URL).rstrip("/") + "/gps"
+        response = requests.get(target_url, timeout=timeout)
+        return response.status_code == 200
+    except Exception:
+        return False
+
+__all__ = ["get_current_location", "is_gps_connected"]

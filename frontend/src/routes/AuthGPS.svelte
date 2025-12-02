@@ -64,10 +64,10 @@
 
 <style>
     .map-box {
-        width: 320px;
-        height: 200px;
+        width: 500px;
+        height: 280px;
         background: #223;
-        margin-bottom: 20px;
+        margin-bottom: 10px;
         display: flex;
         flex-direction: column;
         align-items: center;

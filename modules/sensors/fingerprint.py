@@ -121,7 +121,6 @@ def capture_fingerprint_image(
     timeout_sec: int = 10,
     width: int = 256,
     height: int = 288,
-    auto_convert_png: bool = True,
 ) -> str:
     """
     Capture a fingerprint image and store it as binary PGM (P5) file.
@@ -168,20 +167,21 @@ def capture_fingerprint_image(
             print(f"[지문] {padding_size} bytes 패딩 추가됨")
     
     print(f"[지문] PGM 저장 완료: {save_path}")
-
-    # png 변환
-    if auto_convert_png:
-        try:
-            from PIL import Image
-            png_path = Path(save_path).with_suffix('.png')
-            img = Image.open(save_path)
-            # Resize to a proper size (256x288 is standard for these sensors)
-            img = img.resize((256, 288), Image.LANCZOS)
-            img.save(png_path)
-            print(f"[지문] PNG 저장 완료 (256x288): {png_path}")
-        except Exception as e:
-            print(f"[경고] PNG 변환 실패: {e}")
-    
     return save_path
 
-__all__ = ["connect_fingerprint_sensor", "capture_fingerprint_image"]
+def is_sensor_connected() -> bool:
+    """
+    Check if fingerprint sensor is connected without performing full connection.
+    Returns True if sensor is available, False otherwise.
+    """
+    if not HAS_FINGERPRINT_DEPS:
+        return False
+    
+    try:
+        finger = connect_fingerprint_sensor()
+        # If we get here, sensor is connected
+        return True
+    except Exception:
+        return False
+
+__all__ = ["connect_fingerprint_sensor", "capture_fingerprint_image", "is_sensor_connected"]

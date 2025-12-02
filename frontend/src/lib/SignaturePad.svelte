@@ -64,11 +64,11 @@
     isDrawing = false;
   }
 
-  function clear() {
+  export function clear() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
-  function save() {
+  export function save() {
     const dataURL = canvas.toDataURL("image/png");
     dispatch("save", dataURL);
   }
@@ -88,10 +88,6 @@
     on:touchend={stopDrawing}
     on:blur={stopDrawing}
   ></canvas>
-  <div class="buttons">
-    <button on:click={clear}>Clear</button>
-    <button on:click={save} class="primary">Save Signature</button>
-  </div>
 </div>
 
 <style>
@@ -99,7 +95,6 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
   }
 
   canvas {
@@ -107,24 +102,5 @@
     background: #fff;
     cursor: crosshair;
     touch-action: none; /* Important for touch devices */
-  }
-
-  .buttons {
-    display: flex;
-    gap: 10px;
-  }
-
-  button {
-    padding: 8px 16px;
-    border: 1px solid #ccc;
-    background: #f0f0f0;
-    cursor: pointer;
-    border-radius: 4px;
-  }
-
-  button.primary {
-    background: #007bff;
-    color: white;
-    border-color: #0056b3;
   }
 </style>

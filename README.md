@@ -4,6 +4,23 @@
 
 이 프로젝트를 실행하기 위해서는 Python 가상환경을 설정하고 필요한 패키지들을 설치해야 합니다.
 
+### 시스템 요구사항
+
+이 프로젝트는 다음 시스템 패키지가 필요합니다:
+
+**Chromium Browser (키오스크 모드)**
+- 서버 시작 시 자동으로 fullscreen 키오스크 모드로 프론트엔드를 실행합니다.
+- 설치 방법 (Ubuntu/Debian):
+```bash
+sudo apt-get update
+sudo apt-get install -y chromium-browser
+```
+
+**자동 실행 설정**
+- 기본적으로 `python server.py` 실행 시 chromium이 자동 실행됩니다.
+- 비활성화하려면: `export AUTO_LAUNCH_KIOSK=0`
+- URL 변경: `export KIOSK_URL=http://localhost:5000`
+
 ### 가상환경 생성 및 활성화
 
 **Linux/macOS:**

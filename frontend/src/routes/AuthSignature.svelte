@@ -7,6 +7,7 @@
 
     let status = "idle";
     let message = "Sign on the pad below";
+    let signaturePad;
 
     async function handleSave(event) {
         const imageData = event.detail;
@@ -23,6 +24,18 @@
         }
     }
 
+    function handleClear() {
+        if (signaturePad) {
+            signaturePad.clear();
+        }
+    }
+
+    function handleSaveClick() {
+        if (signaturePad) {
+            signaturePad.save();
+        }
+    }
+
     function next() {
         $currentStep = 7; // Go to Review
     }
@@ -34,7 +47,12 @@
 
     <div class="content center column">
         {#if status !== "success"}
-            <SignaturePad on:save={handleSave} />
+            <SignaturePad
+                bind:this={signaturePad}
+                width={500}
+                height={240}
+                on:save={handleSave}
+            />
         {:else}
             <div class="pad-box success">
                 <span class="check">✓</span>
@@ -45,6 +63,12 @@
 
     <div class="footer">
         <Button onClick={() => ($currentStep = 5)}>Back</Button>
+        <div class="sig-buttons">
+            {#if status !== "success"}
+                <Button onClick={handleClear}>Clear</Button>
+                <Button onClick={handleSaveClick}>Save Signature</Button>
+            {/if}
+        </div>
         {#if status === "success"}
             <Button primary onClick={next}>Next</Button>
         {/if}
@@ -53,11 +77,11 @@
 
 <style>
     .pad-box {
-        width: 320px;
-        height: 160px;
+        width: 500px;
+        height: 240px;
         background: #eee;
         color: #333;
-        margin-bottom: 20px;
+        margin-bottom: 10px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -68,5 +92,12 @@
         border-style: solid;
         border-color: #4caf50;
         background: #e8f5e9;
+    }
+    .status-text {
+        margin-top: 5px;
+    }
+    .sig-buttons {
+        display: flex;
+        gap: 10px;
     }
 </style>

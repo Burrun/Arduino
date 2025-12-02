@@ -3,8 +3,6 @@
     import StepIndicator from "../lib/StepIndicator.svelte";
     import { currentStep, authData } from "../lib/store";
 
-    let agreed = false;
-
     function next() {
         $currentStep = 8; // Go to Sending
     }
@@ -46,33 +44,26 @@
                 >
             </div>
         </div>
-
-        <div class="consent">
-            <label>
-                <input type="checkbox" bind:checked={agreed} />
-                I agree to the collection and use of my biometric and location data
-                for authentication purposes.
-            </label>
-        </div>
     </div>
 
     <div class="footer">
         <Button onClick={() => ($currentStep = 6)}>Back</Button>
-        <Button primary disabled={!agreed} onClick={next}>Submit</Button>
+        <Button primary onClick={next}>Submit</Button>
     </div>
 </div>
 
 <style>
     .summary {
         background: #333;
-        padding: 20px;
+        padding: 15px;
         border-radius: 8px;
-        margin-bottom: 20px;
+        max-height: 300px;
+        overflow-y: auto;
     }
     .row {
         display: flex;
         justify-content: space-between;
-        padding: 10px 0;
+        padding: 8px 0;
         border-bottom: 1px solid #444;
     }
     .row:last-child {
@@ -81,13 +72,5 @@
     .val {
         font-weight: bold;
         color: #aaa;
-    }
-    .consent {
-        font-size: 1.1rem;
-        padding: 10px;
-    }
-    input[type="checkbox"] {
-        transform: scale(1.5);
-        margin-right: 10px;
     }
 </style>

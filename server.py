@@ -6,6 +6,10 @@ import sys
 import os
 from pathlib import Path
 import requests
+import shutil
+import subprocess
+import threading
+import time
 
 # Add the current directory to sys.path to allow importing modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -23,6 +27,10 @@ ESP32_CAM_URL = os.getenv("ESP32_CAM_URL", "http://192.168.4.1")
 # If set, data will be sent here for validation.
 # Example: "http://external-server.com/api"
 EXTERNAL_SERVER_URL = os.getenv("EXTERNAL_SERVER_URL", "")
+
+# Kiosk browser auto-launch configuration
+AUTO_LAUNCH_KIOSK = os.getenv("AUTO_LAUNCH_KIOSK", "1").lower() not in {"0", "false", "no"}
+KIOSK_URL = os.getenv("KIOSK_URL", "http://localhost:5000")
 
 # CORS configuration
 app.add_middleware(
@@ -89,7 +97,7 @@ async def upload_gps(request: Request):
             if len(parts) > 2:
                 latest_gps_data["timestamp"] = parts[2]
             else:
-                timestamp, _ = rtc.get_current_time()
+                timestamp, _ = rtc.get_current_time(verbose=False)
                 latest_gps_data["timestamp"] = timestamp.isoformat()
         
         return {"status": "success"}
@@ -107,7 +115,7 @@ async def upload_image(request: Request):
         image_dir = Path("data/camera")
         image_dir.mkdir(parents=True, exist_ok=True)
         
-        timestamp, _ = rtc.get_current_time()
+        timestamp, _ = rtc.get_current_time(verbose=False)
         filename = f"camera_{timestamp.strftime('%Y%m%d_%H%M%S')}.jpg"
         image_path = image_dir / filename
         
@@ -125,10 +133,32 @@ async def upload_image(request: Request):
 @app.get("/api/rtc")
 async def get_rtc_time():
     try:
-        timestamp, source = rtc.get_current_time()
+        timestamp, source = rtc.get_current_time(verbose=False)
         return {"timestamp": timestamp.isoformat(), "source": source}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/sensors/status")
+async def check_sensors():
+    """Check the status of all sensors."""
+    try:
+        return {
+            "rtc": rtc.is_rtc_connected(),
+            "fingerprint": fingerprint.is_sensor_connected(),
+            "camera": camera.is_camera_connected(),
+            "gps": gps.is_gps_connected(),
+            "signature": True  # Signature is software-based, always available
+        }
+    except Exception as e:
+        print(f"[SENSORS] Error checking sensors: {e}")
+        # Return partial results even if some checks fail
+        return {
+            "rtc": False,
+            "fingerprint": False,
+            "camera": False,
+            "gps": False,
+            "signature": True
+        }
 
 @app.post("/api/fingerprint")
 async def scan_fingerprint():
@@ -136,7 +166,7 @@ async def scan_fingerprint():
         image_dir = Path("data/fingerprints")
         image_dir.mkdir(parents=True, exist_ok=True)
         
-        timestamp, _ = rtc.get_current_time()
+        timestamp, _ = rtc.get_current_time(verbose=False)
         filename = f"fingerprint_{timestamp.strftime('%Y%m%d_%H%M%S')}.pgm"
         image_path = image_dir / filename
 
@@ -192,6 +222,18 @@ async def get_camera_image():
 async def get_gps_location():
     global latest_gps_data
     
+    # Validate GPS coordinates (reject 0.0, 0.0)
+    try:
+        lat = float(latest_gps_data.get("latitude", 0))
+        lon = float(latest_gps_data.get("longitude", 0))
+        if lat == 0.0 and lon == 0.0:
+            raise HTTPException(
+                status_code=400, 
+                detail="Invalid GPS coordinates: location is 0.0, 0.0"
+            )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid GPS data format")
+    
     # External Validation
     if not await validate_with_external("validate_gps", latest_gps_data, is_json=True):
          raise HTTPException(status_code=400, detail="External validation failed for GPS")
@@ -201,15 +243,60 @@ async def get_gps_location():
 class SignatureRequest(BaseModel):
     image: str # Base64 encoded image
 
+def _launch_kiosk_browser():
+    """Launch chromium in kiosk mode for fullscreen display."""
+    # Try chromium-browser first, then chromium
+    browser_cmd = None
+    for cmd in ["chromium-browser", "chromium"]:
+        if shutil.which(cmd):
+            browser_cmd = cmd
+            break
+    
+    if not browser_cmd:
+        print("[KIOSK] chromium not found in PATH; skipping auto-launch.")
+        print("[KIOSK] Install with: sudo apt-get install chromium-browser")
+        return
+    
+    # Small delay to let uvicorn start accepting requests
+    time.sleep(0.8)
+    
+    try:
+        subprocess.Popen(
+            [
+                browser_cmd,
+                "--kiosk",
+                "--disable-infobars",
+                "--noerrdialogs",
+                "--disable-session-crashed-bubble",
+                "--disable-restore-session-state",
+                KIOSK_URL
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        print(f"[KIOSK] Launched {browser_cmd} in kiosk mode pointing to {KIOSK_URL}")
+    except Exception as e:
+        print(f"[KIOSK] Failed to launch browser: {e}")
+
+@app.on_event("startup")
+async def start_kiosk():
+    """Auto-open the frontend in kiosk browser when the server starts."""
+    if not AUTO_LAUNCH_KIOSK:
+        print("[KIOSK] Auto-launch disabled via AUTO_LAUNCH_KIOSK.")
+        return
+    threading.Thread(target=_launch_kiosk_browser, daemon=True).start()
+
 @app.post("/api/signature")
 async def upload_signature(request: SignatureRequest):
     try:
         import base64
+        from PIL import Image
+        import io
         
         signature_dir = Path("data/signatures")
         signature_dir.mkdir(parents=True, exist_ok=True)
         
-        timestamp, _ = rtc.get_current_time()
+        timestamp, _ = rtc.get_current_time(verbose=False)
         filename = f"signature_{timestamp.strftime('%Y%m%d_%H%M%S')}.png"
         image_path = signature_dir / filename
         
@@ -219,6 +306,30 @@ async def upload_signature(request: SignatureRequest):
             image_data = image_data.split(",")[1]
             
         decoded_image = base64.b64decode(image_data)
+        
+        # Check if signature is blank
+        try:
+            img = Image.open(io.BytesIO(decoded_image))
+            # Convert to RGB if needed
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            
+            pixels = list(img.getdata())
+            # Count non-white pixels (allowing for slight variations from pure white)
+            non_white = sum(1 for p in pixels if sum(p) < 750)  # 750 = 255*3 - tolerance
+            
+            # Require at least 100 non-white pixels for a valid signature
+            if non_white < 100:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Signature is blank or contains insufficient data"
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"[SIGNATURE] Warning: Could not validate signature content: {e}")
+            # Continue even if validation fails (PIL might not be available)
+        
         with open(image_path, "wb") as f:
             f.write(decoded_image)
             
