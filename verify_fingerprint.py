@@ -146,7 +146,13 @@ def test_image_capture(finger):
         print("\n→ 손가락을 센서에 올려주세요...")
         test_dir = os.path.join(os.path.dirname(__file__), "data")
         os.makedirs(test_dir, exist_ok=True)
-        test_path = os.path.join(test_dir, "test_fingerprint.png")
+        idx = 1
+        while True:
+            candidate = os.path.join(test_dir, f"test_fingerprint_{idx:03d}.png")
+            if not os.path.exists(candidate):
+                test_path = candidate
+                break
+            idx += 1
         saved_path = fingerprint.capture_fingerprint_image(
             finger,
             save_path=test_path,
