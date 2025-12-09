@@ -173,6 +173,18 @@ class SessionManager:
         self.login_time = time.time()
         print(f"[SESSION] User logged in: {user_data.get('username', 'unknown')}")
         
+    def requires_login(self):
+        """Check if user is logged in and session is valid."""
+        if not self.current_user or not self.login_time:
+            raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
+            
+        elapsed = (time.time() - self.login_time) / 60
+        if elapsed > self.timeout_minutes:
+            print(f"[SESSION] Login session expired (elapsed: {elapsed:.1f} min)")
+            self.current_user = None
+            self.login_time = None
+            raise HTTPException(status_code=401, detail="로그인 세션이 만료되었습니다. 다시 로그인해주세요.")
+            
     def set_log_id(self, log_id: int):
         """Store logId from verification start."""
         self.current_log_id = log_id
@@ -538,8 +550,12 @@ async def authbox_start_verification(request: VerificationStartRequest = None):
     AuthBox 서버에서 logId를 발급받습니다.
     요청: {"userId": "사용자ID"}
     """
-    if not session_manager.is_logged_in():
-        raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
+    if not session_manager.current_user:
+        # Fallback if requires_login raises exception directly, but we want to use the method
+        pass 
+    
+    # Check login validity (existence + expiration)
+    session_manager.requires_login()
     
     # userId는 요청에서 받거나, 로그인 세션에서 가져옴
     user_id = request.userId if request else session_manager.current_user.get("userId")
@@ -621,7 +637,7 @@ async def authbox_verify_otp(log_id: int, request: OTPRequest):
         response = requests.post(
             f"{AUTHBOX_SERVER_URL}/api/verification/{log_id}/otp",
             json={"userReporter": request.userReporter},
-            timeout=10
+            timeout=60
         )
         
         if response.status_code == 200:
