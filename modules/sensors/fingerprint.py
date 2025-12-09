@@ -15,16 +15,98 @@ try:
     import serial
     from serial.tools import list_ports
     import adafruit_fingerprint
+    from PIL import Image
     HAS_FINGERPRINT_DEPS = True
 except Exception:  # pragma: no cover - dev hosts often miss hardware deps
     serial = None
     adafruit_fingerprint = None
     list_ports = None
+    Image = None
     HAS_FINGERPRINT_DEPS = False
 
-UART_PORT = os.environ.get("FP_UART", "/dev/serial0")
+UART_PORT = os.environ.get("FP_UART", "/dev/ttyS0")
 UART_BAUD = int(os.environ.get("FP_UART_BAUD", "57600"))
 print(f"[DEBUG] target UART_PORT={UART_PORT}, UART_BAUD={UART_BAUD}")
+
+
+def probe_sensor_handshake(
+    port: Optional[str] = None,
+    baudrate: Optional[int] = None,
+    timeout: float = 2.0,
+):
+    """
+    Send a raw VfyPwd (0x13) packet to the sensor and return response metadata.
+    This is a lightweight check that mirrors `test/fingerprint_test.py`.
+    """
+    if not HAS_FINGERPRINT_DEPS:
+        raise RuntimeError("pyserial이 설치되어 있어야 합니다.")
+
+    target_port = port or UART_PORT
+    baud = baudrate or UART_BAUD
+    handshake = bytes(
+        [
+            0xEF,
+            0x01,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0x01,
+            0x00,
+            0x07,
+            0x13,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x1B,
+        ]
+    )
+
+    response = b""
+    last_exc: Optional[BaseException] = None
+
+    try:
+        with serial.Serial(
+            target_port,
+            baudrate=baud,
+            timeout=timeout,
+        ) as ser:
+            ser.reset_input_buffer()
+            ser.reset_output_buffer()
+            ser.write(handshake)
+            ser.flush()
+
+            # Give the sensor a brief moment to respond
+            end_at = time.time() + timeout
+            while time.time() < end_at:
+                waiting = ser.in_waiting
+                if waiting:
+                    response += ser.read(waiting)
+                    # small extra read to catch trailing bytes
+                    time.sleep(0.05)
+                    response += ser.read(ser.in_waiting)
+                    break
+                time.sleep(0.05)
+    except BaseException as exc:
+        last_exc = exc
+
+    success = (
+        len(response) >= 12
+        and response[0:2] == b"\xEF\x01"
+        and response[9] == 0x00
+    )
+    confirm_code = response[9] if len(response) > 9 else None
+
+    return {
+        "success": success,
+        "port": target_port,
+        "baudrate": baud,
+        "response_hex": response.hex(),
+        "confirm_code": confirm_code,
+        "error": last_exc,
+    }
 
 
 def connect_fingerprint_sensor(
@@ -58,7 +140,7 @@ def connect_fingerprint_sensor(
     fallback_ports: List[str] = []
     if UART_PORT and UART_PORT not in fallback_ports:
         fallback_ports.append(UART_PORT)
-    for extra in ("/dev/ttyAMA0", "/dev/ttyS0", "/dev/serial0"):
+    for extra in ("/dev/ttyS0", "/dev/ttyAMA0", "/dev/serial0"):
         if extra and extra not in fallback_ports:
             fallback_ports.append(extra)
 
@@ -117,15 +199,18 @@ def connect_fingerprint_sensor(
 
 def capture_fingerprint_image(
     finger,
-    save_path: str = "fingerprint.pgm",
+    save_path: str = "fingerprint.png",
     timeout_sec: int = 10,
     width: int = 256,
     height: int = 288,
 ) -> str:
     """
-    Capture a fingerprint image and store it as binary PGM (P5) file.
+    Capture a fingerprint image and store it as PNG (uses Pillow).
     Returns the saved file path.
     """
+    if Image is None:
+        raise RuntimeError("Pillow(PIL) 패키지가 필요합니다. `pip install pillow`")
+
     print("[지문] 손가락을 센서에 올려주세요...")
     start = time.time()
     while time.time() - start < timeout_sec:
@@ -141,7 +226,30 @@ def capture_fingerprint_image(
 
     # image 데이터 가져오기
     print("[지문] 지문 인식 성공! 이미지 데이터 다운로드 중... (약 5-10초 소요)")
-    data_list = finger.get_fpdata(sensorbuffer="image")  # List[int]
+    data_list: List[int] = []
+
+    # Downloading ~50-90KB over 57600bps takes ~10-12s; bump timeout temporarily.
+    original_timeout = getattr(getattr(finger, "_uart", None), "timeout", None)
+    try:
+        if getattr(finger, "_uart", None) and hasattr(finger._uart, "timeout"):
+            finger._uart.timeout = max(original_timeout or 0, 15)
+            try:
+                finger._uart.reset_input_buffer()
+                finger._uart.reset_output_buffer()
+            except Exception:
+                pass
+
+        data_list = finger.get_fpdata(sensorbuffer="image")  # List[int]
+    finally:
+        if (
+            getattr(finger, "_uart", None)
+            and original_timeout is not None
+            and hasattr(finger._uart, "timeout")
+        ):
+            try:
+                finger._uart.timeout = original_timeout
+            except Exception:
+                pass
     
     if not data_list:
         raise RuntimeError("센서에서 이미지 데이터를 받지 못했습니다")
@@ -150,23 +258,18 @@ def capture_fingerprint_image(
     expected_size = width * height    
     save_path = str(save_path)
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-    
-    # PGM 파일 저장
-    with open(save_path, "wb") as file:
-        header = f"P5\n{width} {height}\n255\n".encode("ascii")
-        file.write(header)
-        
-        if len(raw) >= expected_size:
-            # 데이터가 충분하면 필요한 만큼만 사용
-            file.write(raw[:expected_size])
-        else:
-            # 데이터가 부족하면 0으로 패딩
-            file.write(raw)
-            padding_size = expected_size - len(raw)
-            file.write(bytes([0]) * padding_size)
-            print(f"[지문] {padding_size} bytes 패딩 추가됨")
-    
-    print(f"[지문] PGM 저장 완료: {save_path}")
+
+    if len(raw) < expected_size:
+        padding_size = expected_size - len(raw)
+        raw = raw + bytes([0] * padding_size)
+        print(f"[지문] {padding_size} bytes 패딩 추가됨")
+    elif len(raw) > expected_size:
+        raw = raw[:expected_size]
+
+    image = Image.frombytes("L", (width, height), raw)
+    image.save(save_path, format="PNG")
+
+    print(f"[지문] PNG 저장 완료: {save_path}")
     return save_path
 
 def is_sensor_connected() -> bool:
@@ -184,4 +287,9 @@ def is_sensor_connected() -> bool:
     except Exception:
         return False
 
-__all__ = ["connect_fingerprint_sensor", "capture_fingerprint_image", "is_sensor_connected"]
+__all__ = [
+    "connect_fingerprint_sensor",
+    "capture_fingerprint_image",
+    "probe_sensor_handshake",
+    "is_sensor_connected",
+]

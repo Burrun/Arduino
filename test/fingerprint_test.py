@@ -86,7 +86,7 @@ def main():
     available_ports = list_available_ports()
     
     # 테스트할 포트 목록
-    test_ports = ["/dev/serial0", "/dev/ttyAMA0", "/dev/ttyS0"]
+    test_ports = ["/dev/ttyS0", "/dev/serial0", "/dev/ttyAMA0"]
     test_ports.extend([p for p in available_ports if p not in test_ports])
     
     # 각 포트 테스트

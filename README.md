@@ -121,6 +121,25 @@ npm run build
     -   **동작**: 웹 앱에서 "Scan Fingerprint"를 클릭합니다.
     -   **확인**: `data/fingerprints/` 폴더에 새로운 `.pgm` 파일이 생성되었는지 확인합니다.
 
+##### verify_fingerprint.py 단독 테스트
+-   **목적**: 라즈베리파이에서 지문 센서만 개별로 점검합니다.
+-   **준비**:
+    - 가상환경 활성화 후 `pip install pyserial adafruit-circuitpython-fingerprint`
+    - 센서를 UART에 연결하고 `enable_uart=1` 등이 설정되어 있는지 확인
+-   **실행**:
+    ```bash
+    # 기본 포트(/dev/ttyS0) 사용
+    ./venv/bin/python3 verify_fingerprint.py
+
+    # 다른 포트를 강제로 사용하고 싶을 때
+    FP_UART=/dev/serial0 FP_UART_BAUD=57600 ./venv/bin/python3 verify_fingerprint.py
+    ```
+-   **스크립트 흐름**:
+    - 의존성 확인 → 사용 가능한 포트 목록 출력
+    - 센서 연결 시도(자동으로 감지된 포트로도 재시도)
+    - 연결 성공 시 등록된 지문 수 표시
+    - 선택적으로 이미지 캡처 테스트(입력에 `y` 선택 시 `/tmp/fingerprint_test.pgm` 생성 후 삭제)
+
 ---
 
 ### 4.2. 원격 센서 (GPS, 카메라) - ESP32 연동
@@ -202,5 +221,3 @@ python server.py
 이 스크립트는 다음을 수행합니다:
 1.  **로컬 모드 테스트**: 외부 URL 없이 실행하여 데이터가 정상 처리되는지 확인.
 2.  **외부 모드 테스트**: 내부적으로 Mock 서버(포트 6000)를 띄우고, `EXTERNAL_SERVER_URL`을 설정하여 데이터가 Mock 서버로 전송되고 검증되는지 확인.
-
-

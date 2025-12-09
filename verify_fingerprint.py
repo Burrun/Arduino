@@ -49,7 +49,8 @@ def test_serial_ports():
         else:
             print("⚠ 감지된 시리얼 포트 없음")
             print("  일반적인 포트:")
-            print("  - /dev/serial0 (라즈베리파이 기본)")
+            print("  - /dev/ttyS0 (기본값)")
+            print("  - /dev/serial0 (라즈베리파이 symlink)")
             print("  - /dev/ttyAMA0 (UART)")
             print("  - /dev/ttyUSB0 (USB-시리얼)")
         
@@ -61,9 +62,45 @@ def test_serial_ports():
         return False
 
 
+def test_raw_handshake():
+    """로우레벨 핸드셰이크 테스트 (VfyPwd)"""
+    print("\n[3] 핸드셰이크 테스트 (VfyPwd)")
+    print("-" * 40)
+
+    if not fingerprint.HAS_FINGERPRINT_DEPS:
+        print("✗ 패키지 미설치로 건너뜀")
+        return False
+
+    try:
+        result = fingerprint.probe_sensor_handshake()
+        resp_hex = result.get("response_hex") or "n/a"
+        confirm = result.get("confirm_code")
+
+        if result.get("success"):
+            print("✓ 센서 응답 OK (VfyPwd)")
+            print(f"  포트/보레이트: {result['port']} / {result['baudrate']}")
+            print(f"  응답(hex): {resp_hex}")
+            return True
+
+        error = result.get("error")
+        if confirm is not None:
+            print(f"✗ 센서가 오류 코드 반환: 0x{confirm:02X}")
+        elif resp_hex != "n/a":
+            print(f"✗ 센서 응답 비정상: {resp_hex}")
+        elif error:
+            print(f"✗ 센서 응답 없음: {error}")
+        else:
+            print("✗ 센서 응답 없음")
+        return False
+
+    except Exception as e:
+        print(f"✗ 핸드셰이크 실패: {e}")
+        return False
+
+
 def test_sensor_connection():
     """지문 센서 연결 테스트"""
-    print("\n[3] 지문 센서 연결 테스트")
+    print("\n[4] 지문 센서 연결 테스트")
     print("-" * 40)
     
     if not fingerprint.HAS_FINGERPRINT_DEPS:
@@ -93,7 +130,7 @@ def test_sensor_connection():
 
 def test_image_capture(finger):
     """지문 이미지 캡처 테스트 (선택적)"""
-    print("\n[4] 지문 이미지 캡처 테스트")
+    print("\n[5] 지문 이미지 캡처 테스트")
     print("-" * 40)
     
     if finger is None:
@@ -107,7 +144,9 @@ def test_image_capture(finger):
             return True
         
         print("\n→ 손가락을 센서에 올려주세요...")
-        test_path = "/tmp/fingerprint_test.pgm"
+        test_dir = os.path.join(os.path.dirname(__file__), "data")
+        os.makedirs(test_dir, exist_ok=True)
+        test_path = os.path.join(test_dir, "test_fingerprint.png")
         saved_path = fingerprint.capture_fingerprint_image(
             finger,
             save_path=test_path,
@@ -120,10 +159,6 @@ def test_image_capture(finger):
             print(f"✓ 이미지 캡처 성공!")
             print(f"  저장 경로: {saved_path}")
             print(f"  파일 크기: {file_size:,} bytes")
-            
-            # 테스트 파일 정리
-            os.remove(saved_path)
-            print("  (테스트 파일 삭제됨)")
             return True
         else:
             print("✗ 이미지 파일이 생성되지 않았습니다")
@@ -131,6 +166,11 @@ def test_image_capture(finger):
             
     except TimeoutError:
         print("✗ 시간 초과: 10초 내에 손가락이 감지되지 않았습니다")
+        return False
+    except RuntimeError as e:
+        print(f"✗ 캡처 실패: {e}")
+        if "이미지 데이터를 받지 못했습니다" in str(e):
+            print("  ↳ 포트 응답은 정상입니다. 다운로드 시간이 충분한지, 포트/보레이트가 맞는지 확인하세요.")
         return False
     except Exception as e:
         print(f"✗ 캡처 실패: {e}")
@@ -145,6 +185,7 @@ def main():
     results = {
         "dependencies": test_dependencies(),
         "serial_ports": test_serial_ports(),
+        "handshake": test_raw_handshake(),
     }
     
     finger = test_sensor_connection()
@@ -171,7 +212,11 @@ def main():
     
     # 전체 결과
     all_passed = all(v is True or v is None for v in results.values())
-    critical_passed = results["dependencies"] and results["connection"]
+    critical_passed = (
+        results["dependencies"]
+        and results["handshake"]
+        and results["connection"]
+    )
     
     print()
     if critical_passed:
