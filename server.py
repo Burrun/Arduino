@@ -32,6 +32,10 @@ EXTERNAL_SERVER_URL = os.getenv("EXTERNAL_SERVER_URL", "")
 AUTO_LAUNCH_KIOSK = os.getenv("AUTO_LAUNCH_KIOSK", "1").lower() not in {"0", "false", "no"}
 KIOSK_URL = os.getenv("KIOSK_URL", "http://localhost:5000")
 
+# Frontend build configuration
+AUTO_BUILD_FRONTEND = os.getenv("AUTO_BUILD_FRONTEND", "1").lower() not in {"0", "false", "no"}
+FRONTEND_DIR = Path(__file__).parent / "frontend"
+
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
@@ -42,6 +46,56 @@ app.add_middleware(
 )
 
 # Serve frontend static files will be configured at the end
+
+def run_frontend_build() -> bool:
+    """Run `npm run build` inside the frontend directory."""
+    if not AUTO_BUILD_FRONTEND:
+        print("[FRONTEND] Auto-build disabled via AUTO_BUILD_FRONTEND.")
+        return False
+
+    if not FRONTEND_DIR.exists():
+        print(f"[FRONTEND] Frontend directory not found at {FRONTEND_DIR}. Skipping build.")
+        return False
+
+    print(f"[FRONTEND] Running npm run build in {FRONTEND_DIR} ...")
+    try:
+        result = subprocess.run(
+            ["npm", "run", "build"],
+            cwd=FRONTEND_DIR,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        stdout = (result.stdout or "").strip()
+        stderr = (result.stderr or "").strip()
+        if stdout:
+            print(stdout)
+        if stderr:
+            print(stderr)
+        print("[FRONTEND] Build completed.")
+        return True
+    except FileNotFoundError:
+        print("[FRONTEND] npm not found. Install Node.js and npm to build the frontend.")
+    except subprocess.CalledProcessError as e:
+        combined_output = f"{(e.stdout or '').strip()}\n{(e.stderr or '').strip()}".strip()
+        print(f"[FRONTEND] Build failed (exit {e.returncode}).")
+        if combined_output:
+            print(combined_output)
+    return False
+
+def ensure_frontend_assets():
+    """Build the frontend (if enabled) and mount the static files."""
+    dist_dir = FRONTEND_DIR / "dist"
+    build_attempted = run_frontend_build()
+
+    if dist_dir.exists():
+        app.mount("/", StaticFiles(directory=dist_dir, html=True), name="static")
+        print(f"[FRONTEND] Serving static files from {dist_dir}")
+    else:
+        if build_attempted:
+            print("[FRONTEND] Build attempted but frontend/dist not found; static files will not be served.")
+        else:
+            print("[FRONTEND] frontend/dist not found. Please run 'npm run build' in the frontend directory.")
 
 # Helper for external validation
 async def validate_with_external(endpoint: str, data: dict | bytes, is_json: bool = True):
@@ -344,13 +398,8 @@ async def upload_signature(request: SignatureRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Serve frontend static files
-# Ensure the frontend is built first (npm run build)
-frontend_dist = Path("frontend/dist")
-if frontend_dist.exists():
-    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="static")
-else:
-    print("Warning: frontend/dist not found. Please run 'npm run build' in the frontend directory.")
+# Serve frontend static files (auto-build if configured)
+ensure_frontend_assets()
 
 if __name__ == "__main__":
     import uvicorn

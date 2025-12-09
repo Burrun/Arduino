@@ -14,6 +14,7 @@
 ```bash
 sudo apt-get update
 sudo apt-get install -y chromium-browser
+cd frontend && npm install 
 ```
 
 **자동 실행 설정**
