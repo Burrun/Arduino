@@ -23,10 +23,16 @@ app = FastAPI()
 # If your ESP32 is connected to your router, change this to its assigned IP.
 ESP32_CAM_URL = os.getenv("ESP32_CAM_URL", "http://192.168.4.1")
 
-# External Server URL for validation (Optional)
-# If set, data will be sent here for validation.
-# Example: "http://external-server.com/api"
+# External API Server URL for verification
+# This is the public IP server that handles authentication
+# Example: "http://123.45.67.89:8080"
+EXTERNAL_API_URL = os.getenv("EXTERNAL_API_URL", "")
+
+# Legacy: Keep for backward compatibility
 EXTERNAL_SERVER_URL = os.getenv("EXTERNAL_SERVER_URL", "")
+
+# Session management: stores the current verification log ID
+current_log_id: int | None = None
 
 # Kiosk browser auto-launch configuration
 AUTO_LAUNCH_KIOSK = os.getenv("AUTO_LAUNCH_KIOSK", "1").lower() not in {"0", "false", "no"}
@@ -128,9 +134,106 @@ async def validate_with_external(endpoint: str, data: dict | bytes, is_json: boo
 class CamRequest(BaseModel):
     command: str
 
+class StartVerificationRequest(BaseModel):
+    userId: str
+
+class OTPSubmitRequest(BaseModel):
+    answer: str
+
+class MailRequest(BaseModel):
+    senderEmail: str
+
 # Global storage for latest data
 latest_gps_data = {"latitude": "0.0", "longitude": "0.0", "timestamp": ""}
 latest_camera_image = ""
+cached_otp_question = None  # Cache for OTP question from external server
+
+# ============================================================
+# External API Integration Functions
+# ============================================================
+
+def get_external_api_url() -> str:
+    """Get the external API URL, preferring EXTERNAL_API_URL over legacy."""
+    return EXTERNAL_API_URL or EXTERNAL_SERVER_URL
+
+async def call_external_api(
+    endpoint: str, 
+    method: str = "POST",
+    json_data: dict | None = None,
+    files: dict | None = None,
+    timeout: int = 10
+) -> dict | None:
+    """Call external API server and return response data."""
+    base_url = get_external_api_url()
+    if not base_url:
+        print(f"[EXTERNAL API] URL not set. Skipping {endpoint}.")
+        return None
+    
+    target_url = f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
+    print(f"[EXTERNAL API] {method} {target_url}")
+    
+    try:
+        if method.upper() == "GET":
+            response = requests.get(target_url, timeout=timeout)
+        elif files:
+            response = requests.post(target_url, files=files, timeout=timeout)
+        else:
+            response = requests.post(target_url, json=json_data, timeout=timeout)
+        
+        print(f"[EXTERNAL API] Response: {response.status_code}")
+        
+        if response.status_code == 200:
+            try:
+                return response.json()
+            except:
+                return {"raw": response.text}
+        else:
+            print(f"[EXTERNAL API] Error: {response.text}")
+            return None
+    except Exception as e:
+        print(f"[EXTERNAL API] Exception: {e}")
+        return None
+
+# ============================================================
+# Verification Session Management
+# ============================================================
+
+@app.post("/api/start")
+async def start_verification(request: StartVerificationRequest):
+    """Start a new verification session and get logId from external server."""
+    global current_log_id
+    
+    print(f"[START] Starting verification for userId: {request.userId}")
+    
+    # Call external server to start verification
+    result = await call_external_api(
+        "api/verification/start",
+        json_data={"userId": request.userId}
+    )
+    
+    if result and "logId" in result:
+        current_log_id = result["logId"]
+        print(f"[START] Got logId: {current_log_id}")
+        return {
+            "status": "success",
+            "logId": current_log_id,
+            "message": "Verification session started"
+        }
+    elif not get_external_api_url():
+        # Local mode: generate a mock logId
+        import random
+        current_log_id = random.randint(1000, 9999)
+        print(f"[START] Local mode - generated logId: {current_log_id}")
+        return {
+            "status": "success",
+            "logId": current_log_id,
+            "message": "Local verification session started"
+        }
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to start verification session with external server"
+        )
 
 @app.post("/upload_gps")
 async def upload_gps(request: Request):
@@ -216,6 +319,9 @@ async def check_sensors():
 
 @app.post("/api/fingerprint")
 async def scan_fingerprint():
+    """Capture fingerprint and send to external server for verification."""
+    global current_log_id
+    
     try:
         image_dir = Path("data/fingerprints")
         image_dir.mkdir(parents=True, exist_ok=True)
@@ -229,52 +335,86 @@ async def scan_fingerprint():
             finger, save_path=str(image_path), timeout_sec=15
         )
         
-        # External Validation
-        # Read the file and send it
+        # Read the captured fingerprint image
         with open(saved_path, "rb") as f:
             image_bytes = f.read()
         
+        # Send to external API if configured
+        if get_external_api_url() and current_log_id:
+            result = await call_external_api(
+                f"api/verification/{current_log_id}/fingerprint",
+                files={"image": (filename, image_bytes, "image/x-portable-graymap")}
+            )
+            if result:
+                return {
+                    "status": "success",
+                    "message": result.get("message", "Fingerprint verified"),
+                    "similarity": result.get("similarity", 0),
+                    "isSuccess": result.get("isSuccess", True),
+                    "path": saved_path
+                }
+            else:
+                raise HTTPException(status_code=400, detail="External fingerprint verification failed")
+        
+        # Legacy external validation (backward compatibility)
         if not await validate_with_external("validate_fingerprint", image_bytes, is_json=False):
-             raise HTTPException(status_code=400, detail="External validation failed for fingerprint")
+            raise HTTPException(status_code=400, detail="External validation failed for fingerprint")
 
         return {"status": "success", "message": "Fingerprint captured and validated", "path": saved_path}
     except HTTPException as he:
         raise he
     except Exception as e:
-        # For demo purposes, if hardware is missing, we might want to return a mock response
-        # But for now, let's return the error
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/camera")
 async def get_camera_image():
-    global latest_camera_image
+    """Get cached camera image and send to external server for face verification."""
+    global latest_camera_image, current_log_id
+    
     if not latest_camera_image:
         raise HTTPException(status_code=404, detail="No image received yet")
     
-    # External Validation
-    # We validate the *cached* image when the frontend requests it (or we could do it on upload)
-    # Doing it here ensures the user sees "Success" only if external server approves.
     try:
         with open(latest_camera_image, "rb") as f:
             image_bytes = f.read()
-            
+        
+        # Determine filename from path
+        filename = Path(latest_camera_image).name
+        
+        # Send to external API for face verification if configured
+        if get_external_api_url() and current_log_id:
+            result = await call_external_api(
+                f"api/verification/{current_log_id}/face",
+                files={"image": (filename, image_bytes, "image/jpeg")}
+            )
+            if result:
+                return {
+                    "status": "success",
+                    "message": result.get("message", "Face verified"),
+                    "faceDistance": result.get("faceDistance", 0),
+                    "score": result.get("score", 100),
+                    "isSuccess": result.get("isSuccess", True),
+                    "path": latest_camera_image
+                }
+            else:
+                raise HTTPException(status_code=400, detail="External face verification failed")
+        
+        # Legacy external validation (backward compatibility)
         if not await validate_with_external("validate_camera", image_bytes, is_json=False):
-             raise HTTPException(status_code=400, detail="External validation failed for camera")
+            raise HTTPException(status_code=400, detail="External validation failed for camera")
              
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[CAMERA VALIDATION] Error: {e}")
-        # If file read fails or validation errors out (not just returns false), fail safe?
-        # Let's fail if validation explicitly fails.
-        if "External validation failed" in str(e):
-            raise e
-        # If file missing etc
         raise HTTPException(status_code=500, detail=f"Validation error: {str(e)}")
 
     return {"status": "success", "message": "Camera captured", "path": latest_camera_image}
 
 @app.get("/api/gps")
 async def get_gps_location():
-    global latest_gps_data
+    """Get GPS location and send to external server for verification."""
+    global latest_gps_data, current_log_id
     
     # Validate GPS coordinates (reject 0.0, 0.0)
     try:
@@ -288,9 +428,26 @@ async def get_gps_location():
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid GPS data format")
     
-    # External Validation
+    # Send to external API for GPS verification if configured
+    if get_external_api_url() and current_log_id:
+        result = await call_external_api(
+            f"api/verification/{current_log_id}/gps",
+            json_data={"latitude": lat, "longitude": lon}
+        )
+        if result:
+            return {
+                "status": "success",
+                "data": latest_gps_data,
+                "gpsLocation": result.get("gpsLocation", ""),
+                "ipLocation": result.get("ipLocation", ""),
+                "isSuccess": result.get("isSuccess", True)
+            }
+        else:
+            raise HTTPException(status_code=400, detail="External GPS verification failed")
+    
+    # Legacy external validation (backward compatibility)
     if not await validate_with_external("validate_gps", latest_gps_data, is_json=True):
-         raise HTTPException(status_code=400, detail="External validation failed for GPS")
+        raise HTTPException(status_code=400, detail="External validation failed for GPS")
 
     return {"status": "success", "data": latest_gps_data}
 
@@ -342,6 +499,9 @@ async def start_kiosk():
 
 @app.post("/api/signature")
 async def upload_signature(request: SignatureRequest):
+    """Upload signature and send to external server for verification."""
+    global current_log_id
+    
     try:
         import base64
         from PIL import Image
@@ -386,17 +546,129 @@ async def upload_signature(request: SignatureRequest):
         
         with open(image_path, "wb") as f:
             f.write(decoded_image)
+        
+        # Send to external API for signature verification if configured
+        if get_external_api_url() and current_log_id:
+            result = await call_external_api(
+                f"api/verification/{current_log_id}/signature",
+                files={"image": (filename, decoded_image, "image/png")}
+            )
+            if result:
+                return {
+                    "status": "success",
+                    "message": result.get("message", "Signature saved"),
+                    "isSuccess": result.get("isSuccess", True),
+                    "path": str(image_path)
+                }
+            else:
+                raise HTTPException(status_code=400, detail="External signature verification failed")
             
-        # External Validation
-        # Send raw bytes or base64? Let's send raw bytes for consistency with others
+        # Legacy external validation (backward compatibility)
         if not await validate_with_external("validate_signature", decoded_image, is_json=False):
-             raise HTTPException(status_code=400, detail="External validation failed for signature")
+            raise HTTPException(status_code=400, detail="External validation failed for signature")
         
         return {"status": "success", "message": "Signature captured", "path": str(image_path)}
     except HTTPException as he:
         raise he
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ============================================================
+# OTP (News-based Quiz) Endpoints
+# ============================================================
+
+@app.get("/api/otp")
+async def get_otp_question():
+    """Get OTP question from external server (news-based quiz)."""
+    global current_log_id, cached_otp_question
+    
+    if get_external_api_url() and current_log_id:
+        result = await call_external_api(
+            f"api/verification/{current_log_id}/otp",
+            method="GET"
+        )
+        if result:
+            cached_otp_question = result
+            return {
+                "status": "success",
+                "question": result.get("question", ""),
+                "options": result.get("options", []),
+                "newsTitle": result.get("newsTitle", "")
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to get OTP question from server")
+    
+    # Local mode: return mock question
+    return {
+        "status": "success",
+        "question": "What is the capital of South Korea?",
+        "options": ["A. Busan", "B. Seoul", "C. Incheon", "D. Daegu"],
+        "newsTitle": "(Local Mode - Mock Question)",
+        "correctAnswer": "B"  # Only in local mode for testing
+    }
+
+@app.post("/api/otp")
+async def submit_otp_answer(request: OTPSubmitRequest):
+    """Submit OTP answer to external server."""
+    global current_log_id
+    
+    if get_external_api_url() and current_log_id:
+        result = await call_external_api(
+            f"api/verification/{current_log_id}/otp",
+            json_data={"answer": request.answer}
+        )
+        if result:
+            return {
+                "status": "success",
+                "isCorrect": result.get("isCorrect", False),
+                "message": result.get("message", "")
+            }
+        else:
+            raise HTTPException(status_code=400, detail="OTP verification failed")
+    
+    # Local mode: check against mock answer
+    is_correct = request.answer.upper() == "B"
+    return {
+        "status": "success",
+        "isCorrect": is_correct,
+        "message": "Correct!" if is_correct else "Incorrect answer"
+    }
+
+# ============================================================
+# Mail Notification Endpoint
+# ============================================================
+
+@app.post("/api/mail")
+async def send_verification_mail(request: MailRequest):
+    """Send verification result email via external server."""
+    global current_log_id
+    
+    if not request.senderEmail:
+        raise HTTPException(status_code=400, detail="Email address is required")
+    
+    if get_external_api_url() and current_log_id:
+        result = await call_external_api(
+            f"api/verification/{current_log_id}/mail",
+            json_data={"senderEmail": request.senderEmail}
+        )
+        if result:
+            return {
+                "status": "success",
+                "message": result.get("message", "Mail sent successfully"),
+                "targetMail": result.get("targetMail", request.senderEmail),
+                "isSuccess": result.get("isSuccess", True)
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to send verification mail")
+    
+    # Local mode: simulate mail sending
+    print(f"[MAIL] Local mode - would send to: {request.senderEmail}")
+    return {
+        "status": "success",
+        "message": "Mail sent successfully (local mode)",
+        "targetMail": request.senderEmail,
+        "isSuccess": True
+    }
 
 # Serve frontend static files (auto-build if configured)
 ensure_frontend_assets()
