@@ -22,7 +22,7 @@
     }
 
     function next() {
-        $currentStep = 3; // Go to Camera
+        $currentStep = 4; // Go to Camera
     }
 </script>
 
@@ -42,7 +42,7 @@
     </div>
 
     <div class="footer">
-        <Button onClick={() => ($currentStep = 1)}>Back</Button>
+        <Button onClick={() => ($currentStep = 2)}>Back</Button>
         {#if status !== "success"}
             <Button primary onClick={scan} disabled={status === "scanning"}>
                 {status === "scanning" ? "Scanning..." : "Scan Fingerprint"}

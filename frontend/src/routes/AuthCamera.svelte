@@ -24,7 +24,7 @@
     }
 
     function next() {
-        $currentStep = 4; // Go to Quiz
+        $currentStep = 5; // Go to Quiz
     }
 </script>
 
@@ -44,7 +44,7 @@
     </div>
 
     <div class="footer">
-        <Button onClick={() => ($currentStep = 2)}>Back</Button>
+        <Button onClick={() => ($currentStep = 3)}>Back</Button>
         {#if status !== "success"}
             <Button primary onClick={capture} disabled={status === "capturing"}>
                 {status === "capturing" ? "Capturing..." : "Take Photo"}

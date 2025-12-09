@@ -45,7 +45,7 @@
     });
 
     function next() {
-        $currentStep = 2; // Go to Auth Steps
+        $currentStep = 3; // Go to Auth Steps
     }
 </script>
 
@@ -88,6 +88,12 @@
             </div>
             <div
                 class="item"
+                class:ok={!checking}
+            >
+                뉴스 OTP
+            </div>
+            <div
+                class="item"
                 class:ok={$sensorStatus.signature}
                 class:failed={!checking && !$sensorStatus.signature}
             >
@@ -97,7 +103,7 @@
     </div>
 
     <div class="footer">
-        <Button onClick={() => ($currentStep = 0)}>Back</Button>
+        <Button onClick={() => ($currentStep = 1)}>Back</Button>
         <Button primary disabled={checking || hasFailed} onClick={next}>
             {checking ? "Checking..." : "Continue"}
         </Button>

@@ -2,6 +2,7 @@
   import Header from "./lib/Header.svelte";
   import { currentStep } from "./lib/store";
 
+  import Login from "./routes/Login.svelte";
   import Standby from "./routes/Standby.svelte";
   import Checklist from "./routes/Checklist.svelte";
   import AuthFingerprint from "./routes/AuthFingerprint.svelte";
@@ -10,6 +11,7 @@
   import AuthGPS from "./routes/AuthGPS.svelte";
   import AuthSignature from "./routes/AuthSignature.svelte";
   import Review from "./routes/Review.svelte";
+  import EmailInput from "./routes/EmailInput.svelte";
   import Sending from "./routes/Sending.svelte";
   import Result from "./routes/Result.svelte";
 </script>
@@ -18,24 +20,28 @@
 
 <main>
   {#if $currentStep === 0}
-    <Standby />
+    <Login />
   {:else if $currentStep === 1}
-    <Checklist />
+    <Standby />
   {:else if $currentStep === 2}
-    <AuthFingerprint />
+    <Checklist />
   {:else if $currentStep === 3}
-    <AuthCamera />
+    <AuthFingerprint />
   {:else if $currentStep === 4}
-    <AuthQuiz />
+    <AuthCamera />
   {:else if $currentStep === 5}
-    <AuthGPS />
+    <AuthQuiz />
   {:else if $currentStep === 6}
-    <AuthSignature />
+    <AuthGPS />
   {:else if $currentStep === 7}
-    <Review />
+    <AuthSignature />
   {:else if $currentStep === 8}
-    <Sending />
+    <Review />
   {:else if $currentStep === 9}
+    <EmailInput />
+  {:else if $currentStep === 10}
+    <Sending />
+  {:else if $currentStep === 11}
     <Result />
   {/if}
 </main>

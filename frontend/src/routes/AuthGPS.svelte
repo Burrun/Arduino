@@ -24,7 +24,7 @@
     }
 
     function next() {
-        $currentStep = 6; // Go to Signature
+        $currentStep = 7; // Go to Signature
     }
 </script>
 
@@ -47,7 +47,7 @@
     </div>
 
     <div class="footer">
-        <Button onClick={() => ($currentStep = 4)}>Back</Button>
+        <Button onClick={() => ($currentStep = 5)}>Back</Button>
         {#if status !== "success"}
             <Button
                 primary

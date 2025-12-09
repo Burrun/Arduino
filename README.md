@@ -55,13 +55,34 @@ python server.py
 
 ### API 엔드포인트 목록
 
+#### 센서 데이터 수집 API (기존)
+
 | Method | Endpoint | 설명 |
 |--------|----------|-------------|
 | `GET` | `/api/rtc` | RTC 모듈 또는 시스템 시간 조회 |
-| `POST` | `/api/fingerprint` | 지문 인식 및 이미지 캡처 |
-| `POST` | `/api/camera` | ESP32-CAM으로 사진 촬영 |
+| `POST` | `/api/fingerprint` | 지문 인식 및 이미지 캡처 (로컬 저장) |
+| `GET` | `/api/camera` | ESP32-CAM 최신 이미지 조회 |
 | `GET` | `/api/gps` | 현재 GPS 위치 조회 |
-| `POST` | `/api/signature` | 서명 입력 받기 |
+| `POST` | `/api/signature` | 서명 입력 받기 (로컬 저장) |
+| `GET` | `/api/sensors/status` | 모든 센서 연결 상태 확인 |
+
+#### AuthBox 인증 API (신규)
+
+인증 기기 서비스 흐름도에 따른 순차적 인증 API입니다.
+
+| Step | Method | Endpoint | 설명 |
+|------|--------|----------|-------------|
+| 1 | `POST` | `/api/user/login` | 사용자 로그인 |
+| 2 | `POST` | `/api/verification/start` | 인증 세션 시작 (logId 발급) |
+| 3-1 | `POST` | `/api/verification/{logId}/gps` | GPS 위치 인증 |
+| 3-2 | `POST` | `/api/verification/{logId}/otp` | 뉴스 OTP 인증 |
+| 3-3 | `POST` | `/api/verification/{logId}/face` | 얼굴 인증 (카메라) |
+| 3-4 | `POST` | `/api/verification/{logId}/fingerprint` | 지문 인증 |
+| 3-5 | `POST` | `/api/verification/{logId}/signature` | 서명 인증 |
+| 4 | `POST` | `/api/verification/{logId}/mail` | 결과 이메일 전송 |
+| - | `GET` | `/api/session/status` | 현재 세션 상태 확인 |
+
+> **세션 정책**: 로그인 및 logId는 최대 20분간 유효합니다. 시간 초과 시 초기 화면으로 이동해야 합니다.
 
 프론트엔드가 빌드되어 있다면, 루트 URL `/`로 접속 시 정적 파일(`frontend/dist`)이 제공됩니다.
 

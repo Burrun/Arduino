@@ -4,7 +4,7 @@
     import { currentStep, authData } from "../lib/store";
 
     function next() {
-        $currentStep = 8; // Go to Sending
+        $currentStep = 9; // Go to EmailInput
     }
 </script>
 
@@ -47,7 +47,7 @@
     </div>
 
     <div class="footer">
-        <Button onClick={() => ($currentStep = 6)}>Back</Button>
+        <Button onClick={() => ($currentStep = 7)}>Back</Button>
         <Button primary onClick={next}>Submit</Button>
     </div>
 </div>
