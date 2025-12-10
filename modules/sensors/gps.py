@@ -48,19 +48,10 @@ def get_current_location(
 
 def is_gps_connected(base_url: Optional[str] = None, timeout: int = 3) -> bool:
     """
-    Check if GPS data exists in gps/gps_data.txt file.
-    Returns True if GPS data file exists and has content, False otherwise.
+    GPS is always available due to hardcoded fallback.
+    Returns True always since we have fallback coordinates.
     """
-    try:
-        from pathlib import Path
-        gps_file = Path("gps/gps_data.txt")
-        
-        if not gps_file.exists():
-            return False
-        
-        # Check if file has content
-        return gps_file.stat().st_size > 0
-    except Exception:
-        return False
+    # GPS always available with hardcoded fallback (37.49638, 126.9569)
+    return True
 
 __all__ = ["get_current_location", "is_gps_connected"]
