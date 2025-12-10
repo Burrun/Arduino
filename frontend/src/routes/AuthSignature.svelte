@@ -11,7 +11,7 @@
     let agreed = false;
 
     let status = "idle";
-    let message = "서명란에 서명해주세요";
+    let message = "Please sign in the box";
     let signaturePad;
 
     function proceedToSignature() {
@@ -23,7 +23,7 @@
     async function handleSave(event) {
         const imageData = event.detail;
         status = "capturing";
-        message = "서명 저장 중...";
+        message = "Saving signature...";
 
         // Debugging: Check logId
         const currentLogId = get(logId);
@@ -37,7 +37,7 @@
                 await new Promise((r) => setTimeout(r, 1000));
                 $authData.signature = imageData; // Just save locally to store
                 status = "success";
-                message = "서명이 저장되었습니다! (테스트 모드)";
+                message = "Signature saved! (Test Mode)";
                 return;
             }
 
@@ -45,12 +45,12 @@
             const res = await api.verifySignature(imageData);
             $authData.signature = res.data.filePath || res.data.path;
             status = "success";
-            message = "서명이 저장되었습니다!";
+            message = "Signature saved!";
         } catch (e) {
             console.error("Signature error:", e);
             status = "error";
             message =
-                e.response?.data?.detail || "저장 실패. 다시 시도해주세요.";
+                e.response?.data?.detail || "Save failed. Please try again.";
         }
     }
 
@@ -76,13 +76,13 @@
 
     {#if step === "consent"}
         <!-- Step 1: Consent -->
-        <h2 class="title">본인 확인 및 처벌 고지</h2>
+        <h2 class="title">Identity Verification and Penalty Notice</h2>
 
         <div class="content center column">
             <div class="pledge-wrapper">
                 <img
                     src="/pledge.png"
-                    alt="본인 확인 및 처벌 고지"
+                    alt="Identity Verification and Penalty Notice"
                     class="pledge-image"
                 />
                 <label class="checkbox-overlay">
@@ -101,12 +101,12 @@
         <div class="footer">
             <Button onClick={() => ($currentStep = 6)}>Back</Button>
             <Button primary disabled={!agreed} onClick={proceedToSignature}>
-                서명하기
+                Sign
             </Button>
         </div>
     {:else}
         <!-- Step 2: Signature -->
-        <h2 class="title">전자 서명</h2>
+        <h2 class="title">Electronic Signature</h2>
 
         <div class="content center column">
             {#if status !== "success"}
@@ -128,12 +128,12 @@
             <Button onClick={() => (step = "consent")}>Back</Button>
             <div class="sig-buttons">
                 {#if status !== "success"}
-                    <Button onClick={handleClear}>지우기</Button>
-                    <Button onClick={handleSaveClick}>서명 저장</Button>
+                    <Button onClick={handleClear}>Clear</Button>
+                    <Button onClick={handleSaveClick}>Save Signature</Button>
                 {/if}
             </div>
             {#if status === "success"}
-                <Button primary onClick={next}>다음</Button>
+                <Button primary onClick={next}>Next</Button>
             {/if}
         </div>
     {/if}

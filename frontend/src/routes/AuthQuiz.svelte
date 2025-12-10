@@ -15,7 +15,7 @@
             const response = await fetch(`/api/verification/${$logId}/otp`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ userReporter: reporterName.trim() })
+                body: JSON.stringify({ userReporter: reporterName.trim() }),
             });
 
             const data = await response.json();
@@ -32,16 +32,17 @@
 
 <div class="full-screen column">
     <StepIndicator current={3} />
-    <h2 class="title">뉴스 OTP 인증</h2>
+    <h2 class="title">News OTP Verification</h2>
 
     <div class="content center column">
         <div class="prompt-box">
             <p class="prompt">
-                현재 동아일보 사회 부분의 가장 최신 뉴스 기사 5개 중 하나를 작성한 기자의<br/>
-                이름을 입력하세요.
+                Enter the name of a reporter who wrote one of the 5 most recent
+                articles<br />
+                in the society section of Donga Ilbo.
             </p>
             <p class="prompt-note">
-                (외부 출처 기사만 존재할 경우, 출처를 써주세요.)
+                (If only external source articles exist, enter the source.)
             </p>
         </div>
 
@@ -49,18 +50,24 @@
             <input
                 type="text"
                 class="reporter-input"
-                placeholder="기자 이름 입력"
+                placeholder="Enter reporter name"
                 bind:value={reporterName}
                 disabled={isLoading}
-                on:keypress={(e) => e.key === 'Enter' && submitOTP()}
+                on:keypress={(e) => e.key === "Enter" && submitOTP()}
             />
         </div>
     </div>
 
     <div class="footer">
-        <Button onClick={() => ($currentStep = 4)} disabled={isLoading}>Back</Button>
-        <Button primary disabled={!reporterName.trim() || isLoading} onClick={submitOTP}>
-            {isLoading ? "확인 중..." : "확인"}
+        <Button onClick={() => ($currentStep = 4)} disabled={isLoading}
+            >Back</Button
+        >
+        <Button
+            primary
+            disabled={!reporterName.trim() || isLoading}
+            onClick={submitOTP}
+        >
+            {isLoading ? "Verifying..." : "Submit"}
         </Button>
     </div>
 </div>

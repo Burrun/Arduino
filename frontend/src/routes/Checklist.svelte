@@ -86,12 +86,7 @@
             >
                 GPS
             </div>
-            <div
-                class="item"
-                class:ok={!checking}
-            >
-                뉴스 OTP
-            </div>
+            <div class="item" class:ok={!checking}>News OTP</div>
             <div
                 class="item"
                 class:ok={$sensorStatus.signature}

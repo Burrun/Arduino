@@ -12,11 +12,11 @@
 
     function handleSubmit() {
         if (!senderEmail.trim()) {
-            errorMessage = "이메일을 입력해주세요.";
+            errorMessage = "Please enter your email.";
             return;
         }
         if (!validateEmail(senderEmail)) {
-            errorMessage = "올바른 이메일 형식이 아닙니다.";
+            errorMessage = "Invalid email format.";
             return;
         }
 
@@ -27,8 +27,10 @@
 </script>
 
 <div class="full-screen center column gap-20">
-    <h2 class="title">결과 수신 이메일</h2>
-    <p class="subtitle">인증 결과를 받을 이메일 주소를 입력하세요.</p>
+    <h2 class="title">Result Email</h2>
+    <p class="subtitle">
+        Enter the email address to receive the verification result.
+    </p>
 
     <div class="email-form">
         <input
@@ -37,9 +39,9 @@
             placeholder="example@email.com"
             bind:value={senderEmail}
             disabled={isLoading}
-            on:keypress={(e) => e.key === 'Enter' && handleSubmit()}
+            on:keypress={(e) => e.key === "Enter" && handleSubmit()}
         />
-        
+
         {#if errorMessage}
             <p class="error">{errorMessage}</p>
         {/if}
@@ -47,8 +49,12 @@
 
     <div class="footer">
         <Button onClick={() => ($currentStep = 8)}>Back</Button>
-        <Button primary onClick={handleSubmit} disabled={isLoading || !senderEmail.trim()}>
-            전송하기
+        <Button
+            primary
+            onClick={handleSubmit}
+            disabled={isLoading || !senderEmail.trim()}
+        >
+            Send
         </Button>
     </div>
 </div>

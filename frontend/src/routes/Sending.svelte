@@ -6,40 +6,42 @@
     let error = null;
 
     onMount(async () => {
-        addLog("인증 데이터 전송 시작...");
-        
+        addLog("Starting to send verification data...");
+
         try {
-            addLog("서버 연결 중...");
-            await new Promise(r => setTimeout(r, 1000));
-            
-            addLog("이메일 전송 요청 중...");
+            addLog("Connecting to server...");
+            await new Promise((r) => setTimeout(r, 1000));
+
+            addLog("Requesting email send...");
             const res = await api.sendMail($authData.senderEmail);
-            
+
             if (res.data.isSuccess) {
-                addLog(`이메일 전송 성공: ${res.data.targetMail}`);
-                addLog("모든 인증이 완료되었습니다!");
-                
-                await new Promise(r => setTimeout(r, 1500));
+                addLog(`Email sent successfully: ${res.data.targetMail}`);
+                addLog("All verification completed!");
+
+                await new Promise((r) => setTimeout(r, 1500));
                 $currentStep = 11; // Go to Result
             } else {
-                throw new Error(res.data.message || "이메일 전송 실패");
+                throw new Error(res.data.message || "Email send failed");
             }
         } catch (e) {
             console.error("Mail error:", e);
-            addLog(`오류: ${e.message || "전송 실패"}`);
-            error = e.message || "전송 실패";
+            addLog(`Error: ${e.message || "Send failed"}`);
+            error = e.message || "Send failed";
         }
     });
 </script>
 
 <div class="full-screen center column">
-    <h2 class="title">결과 전송 중</h2>
+    <h2 class="title">Sending Result</h2>
 
     {#if !error}
         <div class="loader"></div>
     {:else}
         <p class="error">{error}</p>
-        <button class="retry-btn" on:click={() => location.reload()}>다시 시도</button>
+        <button class="retry-btn" on:click={() => location.reload()}
+            >Retry</button
+        >
     {/if}
 
     <div class="log-window">

@@ -10,7 +10,7 @@
 
     async function handleLogin() {
         if (!userId.trim() || !password.trim()) {
-            errorMessage = "아이디와 비밀번호를 입력해주세요.";
+            errorMessage = "Please enter ID and password.";
             return;
         }
 
@@ -20,19 +20,19 @@
         try {
             await api.login(userId, password);
             console.log("[AUTH] Login successful for:", userId);
-            
+
             // 로그인 정보 저장
             $authData.userId = userId;
             $authData.sessionId = userId;
-            
+
             // 다음 단계로 (Standby)
             $currentStep = 1;
         } catch (error) {
             console.error("[AUTH] Login error:", error);
             if (error.response?.status === 400) {
-                errorMessage = "아이디 또는 비밀번호가 잘못되었습니다.";
+                errorMessage = "Invalid ID or password.";
             } else {
-                errorMessage = "서버 연결에 실패했습니다.";
+                errorMessage = "Failed to connect to server.";
             }
         } finally {
             isLoading = false;
@@ -42,32 +42,32 @@
 
 <div class="full-screen center column gap-20">
     <h1>AuthBox</h1>
-    <p class="subtitle">로그인</p>
+    <p class="subtitle">Login</p>
 
     <div class="login-form">
         <input
             type="text"
             class="input-field"
-            placeholder="아이디"
+            placeholder="User ID"
             bind:value={userId}
             disabled={isLoading}
-            on:keypress={(e) => e.key === 'Enter' && handleLogin()}
+            on:keypress={(e) => e.key === "Enter" && handleLogin()}
         />
         <input
             type="password"
             class="input-field"
-            placeholder="비밀번호"
+            placeholder="Password"
             bind:value={password}
             disabled={isLoading}
-            on:keypress={(e) => e.key === 'Enter' && handleLogin()}
+            on:keypress={(e) => e.key === "Enter" && handleLogin()}
         />
-        
+
         {#if errorMessage}
             <p class="error">{errorMessage}</p>
         {/if}
-        
+
         <Button primary onClick={handleLogin} disabled={isLoading}>
-            {isLoading ? "로그인 중..." : "로그인"}
+            {isLoading ? "Logging in..." : "Login"}
         </Button>
     </div>
 </div>
