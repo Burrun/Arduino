@@ -2,13 +2,14 @@
     import Button from "../lib/Button.svelte";
     import StepIndicator from "../lib/StepIndicator.svelte";
     import SignaturePad from "../lib/SignaturePad.svelte";
-    import { currentStep, authData } from "../lib/store";
+    import { currentStep, authData, logId } from "../lib/store";
     import { api } from "../lib/api";
+    import { get } from "svelte/store";
 
     // Two-step flow: consent -> signature
     let step = "consent"; // "consent" or "signature"
     let agreed = false;
-    
+
     let status = "idle";
     let message = "서명란에 서명해주세요";
     let signaturePad;
@@ -23,23 +24,21 @@
         const imageData = event.detail;
         status = "capturing";
         message = "서명 저장 중...";
-        
+
         // Debugging: Check logId
-        import { get } from 'svelte/store';
-        import { logId } from "../lib/store";
         const currentLogId = get(logId);
         console.log("Current Log ID:", currentLogId);
 
         try {
             if (!currentLogId) {
-                 // For UI testing without real session
-                 console.warn("No logId found. Running in UI Test Mode.");
-                 // Simulate API delay
-                 await new Promise(r => setTimeout(r, 1000));
-                 $authData.signature = imageData; // Just save locally to store
-                 status = "success";
-                 message = "서명이 저장되었습니다! (테스트 모드)";
-                 return;
+                // For UI testing without real session
+                console.warn("No logId found. Running in UI Test Mode.");
+                // Simulate API delay
+                await new Promise((r) => setTimeout(r, 1000));
+                $authData.signature = imageData; // Just save locally to store
+                status = "success";
+                message = "서명이 저장되었습니다! (테스트 모드)";
+                return;
             }
 
             // Use AuthBox verification API
@@ -50,7 +49,8 @@
         } catch (e) {
             console.error("Signature error:", e);
             status = "error";
-            message = e.response?.data?.detail || "저장 실패. 다시 시도해주세요.";
+            message =
+                e.response?.data?.detail || "저장 실패. 다시 시도해주세요.";
         }
     }
 
@@ -73,16 +73,24 @@
 
 <div class="full-screen column">
     <StepIndicator current={6} />
-    
+
     {#if step === "consent"}
         <!-- Step 1: Consent -->
         <h2 class="title">본인 확인 및 처벌 고지</h2>
-        
+
         <div class="content center column">
             <div class="pledge-wrapper">
-                <img src="/pledge.png" alt="본인 확인 및 처벌 고지" class="pledge-image" />
+                <img
+                    src="/pledge.png"
+                    alt="본인 확인 및 처벌 고지"
+                    class="pledge-image"
+                />
                 <label class="checkbox-overlay">
-                    <input type="checkbox" bind:checked={agreed} class="checkbox-input" />
+                    <input
+                        type="checkbox"
+                        bind:checked={agreed}
+                        class="checkbox-input"
+                    />
                     {#if agreed}
                         <div class="checkbox-check">✔</div>
                     {/if}
