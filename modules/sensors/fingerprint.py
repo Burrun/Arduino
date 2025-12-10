@@ -169,19 +169,94 @@ def capture_fingerprint_image(
     print(f"[지문] PGM 저장 완료: {save_path}")
     return save_path
 
+def probe_sensor_handshake(
+    port: Optional[str] = None,
+    baudrate: Optional[int] = None,
+    timeout: float = 1.0,
+) -> dict:
+    """
+    Perform low-level handshake test (VfyPwd) with fingerprint sensor.
+    Returns dict with success status, port info, and response details.
+    This is a lightweight check compared to full connection.
+    """
+    if not HAS_FINGERPRINT_DEPS:
+        return {
+            "success": False,
+            "error": "Dependencies not installed",
+        }
+    
+    target_port = port or UART_PORT
+    target_baud = baudrate or UART_BAUD
+    
+    try:
+        # Try to open serial port
+        uart = serial.Serial(target_port, baudrate=target_baud, timeout=timeout)
+        time.sleep(0.1)
+        uart.reset_input_buffer()
+        uart.reset_output_buffer()
+        time.sleep(0.1)
+        
+        # Create fingerprint object
+        finger = adafruit_fingerprint.Adafruit_Fingerprint(uart)
+        
+        # Try to verify password (handshake with sensor)
+        # This sends VfyPwd command which is lighter than full template count
+        try:
+            result = finger.verify_password()
+            uart.close()
+            
+            if result == adafruit_fingerprint.OK:
+                return {
+                    "success": True,
+                    "port": target_port,
+                    "baudrate": target_baud,
+                    "confirm_code": 0x00,
+                    "response_hex": "OK (0x00)",
+                }
+            else:
+                return {
+                    "success": False,
+                    "port": target_port,
+                    "baudrate": target_baud,
+                    "confirm_code": result,
+                    "response_hex": f"0x{result:02X}",
+                    "error": f"Sensor returned error code: 0x{result:02X}",
+                }
+        except Exception as e:
+            uart.close()
+            return {
+                "success": False,
+                "port": target_port,
+                "baudrate": target_baud,
+                "error": f"Handshake failed: {e}",
+            }
+            
+    except (FileNotFoundError, serial.SerialException) as e:
+        return {
+            "success": False,
+            "port": target_port,
+            "baudrate": target_baud,
+            "error": f"Port open failed: {e}",
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "port": target_port,
+            "baudrate": target_baud,
+            "error": f"Unexpected error: {e}",
+        }
+
+
 def is_sensor_connected() -> bool:
     """
-    Check if fingerprint sensor is connected without performing full connection.
+    Check if fingerprint sensor is connected using lightweight handshake.
     Returns True if sensor is available, False otherwise.
     """
     if not HAS_FINGERPRINT_DEPS:
         return False
     
-    try:
-        finger = connect_fingerprint_sensor()
-        # If we get here, sensor is connected
-        return True
-    except Exception:
-        return False
+    # Use the more reliable handshake method
+    result = probe_sensor_handshake()
+    return result.get("success", False)
 
-__all__ = ["connect_fingerprint_sensor", "capture_fingerprint_image", "is_sensor_connected"]
+__all__ = ["connect_fingerprint_sensor", "capture_fingerprint_image", "is_sensor_connected", "probe_sensor_handshake"]
