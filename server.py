@@ -363,10 +363,39 @@ async def scan_fingerprint():
         # But for now, let's return the error
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/camera/status")
+async def get_camera_status():
+    """Check if new image file exists in images/ folder"""
+    try:
+        image_dir = Path("images")
+        if not image_dir.exists():
+            return {"hasUpdate": False, "latestFile": None, "latestMtime": None}
+        
+        image_files = sorted(image_dir.glob("*.jpg"), key=lambda p: p.stat().st_mtime, reverse=True)
+        
+        if not image_files:
+            return {"hasUpdate": False, "latestFile": None, "latestMtime": None}
+        
+        latest = image_files[0]
+        return {
+            "hasUpdate": True,
+            "latestFile": str(latest),
+            "latestMtime": latest.stat().st_mtime
+        }
+    except Exception as e:
+        print(f"[CAMERA STATUS] Error: {e}")
+        return {"hasUpdate": False, "latestFile": None, "latestMtime": None}
+
 @app.get("/api/camera")
 async def get_camera_image():
-    """Get the latest image from images/ folder"""
+    """Wait 5 seconds then get the latest image from images/ folder"""
     try:
+        import asyncio
+        
+        # 5-second delay to ensure ESP32 has sent the latest image
+        print("[CAMERA API] Waiting 5 seconds for latest image...")
+        await asyncio.sleep(5)
+        
         image_dir = Path("images")
         if not image_dir.exists():
             raise HTTPException(status_code=404, detail="No images folder found")
@@ -386,6 +415,7 @@ async def get_camera_image():
         if not await validate_with_external("validate_camera", image_bytes, is_json=False):
              raise HTTPException(status_code=400, detail="External validation failed for camera")
 
+        print(f"[CAMERA API] Returning latest image: {latest_image}")
         return {"status": "success", "message": "Camera captured", "path": latest_image}
     except HTTPException as he:
         raise he
@@ -393,10 +423,35 @@ async def get_camera_image():
         print(f"[CAMERA API] Error: {e}")
         raise HTTPException(status_code=500, detail=f"Error reading camera image: {str(e)}")
 
+@app.get("/api/gps/status")
+async def get_gps_status():
+    """Check if new GPS data exists in gps/gps_data.txt"""
+    try:
+        gps_file = Path("gps/gps_data.txt")
+        
+        if not gps_file.exists():
+            return {"hasUpdate": False, "latestMtime": None}
+        
+        mtime = gps_file.stat().st_mtime
+        return {
+            "hasUpdate": True,
+            "latestMtime": mtime
+        }
+    except Exception as e:
+        print(f"[GPS STATUS] Error: {e}")
+        return {"hasUpdate": False, "latestMtime": None}
+
 @app.get("/api/gps")
 async def get_gps_location():
-    """Get the latest GPS data from gps_data.txt"""
+    """Wait 5 seconds then get the latest GPS data from gps_data.txt"""
     try:
+        import asyncio
+        import re
+        
+        # 5-second delay to ensure ESP32 has sent the latest GPS data
+        print("[GPS API] Waiting 5 seconds for latest GPS data...")
+        await asyncio.sleep(5)
+        
         gps_file = Path("gps/gps_data.txt")
         
         if not gps_file.exists():
@@ -412,7 +467,6 @@ async def get_gps_location():
         last_line = lines[-1].strip()
         
         # Parse: "[2025-12-10 12:30:00] lat,lon"
-        import re
         match = re.search(r'\[(.+?)\]\s+(.+)', last_line)
         
         if not match:
@@ -441,6 +495,7 @@ async def get_gps_location():
         if not await validate_with_external("validate_gps", gps_result, is_json=True):
              raise HTTPException(status_code=400, detail="External validation failed for GPS")
 
+        print(f"[GPS API] Returning GPS data: {gps_result}")
         return {"status": "success", "data": gps_result}
     except HTTPException as he:
         raise he
