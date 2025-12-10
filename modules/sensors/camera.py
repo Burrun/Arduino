@@ -51,14 +51,17 @@ def capture_image(
 
 def is_camera_connected(base_url: Optional[str] = None, timeout: int = 3) -> bool:
     """
-    Check if ESP32-CAM is reachable without capturing an image.
-    Returns True if camera is available, False otherwise.
+    Check if camera data exists in images/ folder.
+    Returns True if there are image files, False otherwise.
     """
     try:
-        target_url = (base_url or ESP32_CAM_URL).rstrip("/")
-        # Try a simple ping or status check
-        response = requests.get(target_url, timeout=timeout)
-        return response.status_code == 200
+        images_dir = Path("images")
+        if not images_dir.exists():
+            return False
+        
+        # Check if there are any .jpg files in the images folder
+        image_files = list(images_dir.glob("*.jpg"))
+        return len(image_files) > 0
     except Exception:
         return False
 

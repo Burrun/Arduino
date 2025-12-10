@@ -48,13 +48,18 @@ def get_current_location(
 
 def is_gps_connected(base_url: Optional[str] = None, timeout: int = 3) -> bool:
     """
-    Check if GPS module is reachable via ESP32.
-    Returns True if GPS is available, False otherwise.
+    Check if GPS data exists in gps/gps_data.txt file.
+    Returns True if GPS data file exists and has content, False otherwise.
     """
     try:
-        target_url = (base_url or ESP32_CAM_URL).rstrip("/") + "/gps"
-        response = requests.get(target_url, timeout=timeout)
-        return response.status_code == 200
+        from pathlib import Path
+        gps_file = Path("gps/gps_data.txt")
+        
+        if not gps_file.exists():
+            return False
+        
+        # Check if file has content
+        return gps_file.stat().st_size > 0
     except Exception:
         return False
 
