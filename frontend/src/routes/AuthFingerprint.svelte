@@ -6,18 +6,32 @@
 
     let status = "idle"; // idle, scanning, success, error
     let message = "Place your finger on the sensor";
+    let countdown = 30;
+    let intervalId = null;
 
     async function scan() {
         status = "scanning";
-        message = "Scanning...";
+        message = "Scanning... Please keep your finger still";
+        countdown = 30;
+
+        // Start countdown
+        intervalId = setInterval(() => {
+            countdown--;
+            if (countdown <= 0) {
+                clearInterval(intervalId);
+            }
+        }, 1000);
+
         try {
             const res = await api.captureFingerprint();
             $authData.fingerprint = res.data.path;
             status = "success";
             message = "Fingerprint captured!";
+            clearInterval(intervalId);
         } catch (e) {
             status = "error";
             message = "Scan failed. Try again.";
+            clearInterval(intervalId);
         }
     }
 
@@ -37,6 +51,9 @@
             class:error={status === "error"}
         >
             <span class="icon">👆</span>
+            {#if status === "scanning" && countdown > 0}
+                <div class="countdown">{countdown}s</div>
+            {/if}
         </div>
         <p class="status-text">{message}</p>
     </div>

@@ -238,24 +238,35 @@ async def upload_gps(request: Request):
     global latest_gps_data
     try:
         body = await request.body()
-        gps_data = body.decode("utf-8").strip()
-        print(f"[GPS UPLOAD] Received: {gps_data}")
+        gps_text = body.decode("utf-8", errors="ignore").strip()
         
-        # Parse GPS data (Assuming format: "lat,lon,timestamp" or similar from ESP32)
-        # Based on cpp: Serial.println("[GPS] " + line); uploadGPS(line);
-        # We need to know the exact format. For now, store raw or try to parse.
-        # Let's assume comma separated for now or just store as is.
-        parts = gps_data.split(',')
+        if not gps_text:
+            return {"status": "ERROR", "msg": "empty gps"}, 400
+        
+        # Save to file
+        gps_dir = Path("gps")
+        gps_dir.mkdir(parents=True, exist_ok=True)
+        filename = gps_dir / "gps_data.txt"
+        
+        try:
+            timestamp, _ = rtc.get_current_time(verbose=False)
+        except Exception:
+            from datetime import datetime
+            timestamp = datetime.now()
+        
+        ts = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        with open(filename, "a", encoding="utf8") as f:
+            f.write(f"[{ts}] {gps_text}\n")
+        
+        # Also parse and store in memory
+        parts = gps_text.split(',')
         if len(parts) >= 2:
             latest_gps_data["latitude"] = parts[0]
             latest_gps_data["longitude"] = parts[1]
-            if len(parts) > 2:
-                latest_gps_data["timestamp"] = parts[2]
-            else:
-                timestamp, _ = rtc.get_current_time(verbose=False)
-                latest_gps_data["timestamp"] = timestamp.isoformat()
+            latest_gps_data["timestamp"] = ts
         
-        return {"status": "success"}
+        print(f"[GPS] {gps_text} → appended to {filename}")
+        return {"status": "OK"}
     except Exception as e:
         print(f"[GPS UPLOAD] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -267,26 +278,26 @@ async def upload_image(request: Request):
         # ESP32 sends raw bytes as body
         body = await request.body()
         
-        image_dir = Path("data/camera")
+        image_dir = Path("images")
         image_dir.mkdir(parents=True, exist_ok=True)
         
-        # RTC 또는 시스템 시간 사용
+        # RTC or system time
         try:
             timestamp, _ = rtc.get_current_time(verbose=False)
         except Exception:
             from datetime import datetime
             timestamp = datetime.now()
         
-        filename = f"camera_{timestamp.strftime('%Y%m%d_%H%M%S')}.jpg"
+        filename = f"{timestamp.strftime('%Y%m%d_%H%M%S_%f')}.jpg"
         image_path = image_dir / filename
         
         with open(image_path, "wb") as f:
             f.write(body)
             
         latest_camera_image = str(image_path)
-        print(f"[IMAGE UPLOAD] Saved to {image_path}, Size: {len(body)} bytes")
+        print(f"[IMAGE UPLOAD] Received {len(body)} bytes → {image_path}")
         
-        return {"status": "success"}
+        return {"status": "success", "filename": str(image_path)}
     except Exception as e:
         print(f"[IMAGE UPLOAD] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -333,7 +344,7 @@ async def scan_fingerprint():
 
         finger = fingerprint.connect_fingerprint_sensor()
         saved_path = fingerprint.capture_fingerprint_image(
-            finger, save_path=str(image_path), timeout_sec=15
+            finger, save_path=str(image_path), timeout_sec=30
         )
         
         # External Validation
@@ -354,52 +365,88 @@ async def scan_fingerprint():
 
 @app.get("/api/camera")
 async def get_camera_image():
-    global latest_camera_image
-    if not latest_camera_image:
-        raise HTTPException(status_code=404, detail="No image received yet")
-    
-    # External Validation
-    # We validate the *cached* image when the frontend requests it (or we could do it on upload)
-    # Doing it here ensures the user sees "Success" only if external server approves.
+    """Get the latest image from images/ folder"""
     try:
-        with open(latest_camera_image, "rb") as f:
+        image_dir = Path("images")
+        if not image_dir.exists():
+            raise HTTPException(status_code=404, detail="No images folder found")
+        
+        # Get the most recent image file
+        image_files = sorted(image_dir.glob("*.jpg"), key=lambda p: p.stat().st_mtime, reverse=True)
+        
+        if not image_files:
+            raise HTTPException(status_code=404, detail="No image received yet")
+        
+        latest_image = str(image_files[0])
+        
+        # External Validation
+        with open(latest_image, "rb") as f:
             image_bytes = f.read()
             
         if not await validate_with_external("validate_camera", image_bytes, is_json=False):
              raise HTTPException(status_code=400, detail="External validation failed for camera")
-             
-    except Exception as e:
-        print(f"[CAMERA VALIDATION] Error: {e}")
-        # If file read fails or validation errors out (not just returns false), fail safe?
-        # Let's fail if validation explicitly fails.
-        if "External validation failed" in str(e):
-            raise e
-        # If file missing etc
-        raise HTTPException(status_code=500, detail=f"Validation error: {str(e)}")
 
-    return {"status": "success", "message": "Camera captured", "path": latest_camera_image}
+        return {"status": "success", "message": "Camera captured", "path": latest_image}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"[CAMERA API] Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error reading camera image: {str(e)}")
 
 @app.get("/api/gps")
 async def get_gps_location():
-    global latest_gps_data
-    
-    # Validate GPS coordinates (reject 0.0, 0.0)
+    """Get the latest GPS data from gps_data.txt"""
     try:
-        lat = float(latest_gps_data.get("latitude", 0))
-        lon = float(latest_gps_data.get("longitude", 0))
+        gps_file = Path("gps/gps_data.txt")
+        
+        if not gps_file.exists():
+            raise HTTPException(status_code=404, detail="No GPS data file found")
+        
+        # Read the last line (most recent GPS data)
+        with open(gps_file, "r", encoding="utf8") as f:
+            lines = f.readlines()
+        
+        if not lines:
+            raise HTTPException(status_code=404, detail="GPS file is empty")
+        
+        last_line = lines[-1].strip()
+        
+        # Parse: "[2025-12-10 12:30:00] lat,lon"
+        import re
+        match = re.search(r'\[(.+?)\]\s+(.+)', last_line)
+        
+        if not match:
+            raise HTTPException(status_code=400, detail="Invalid GPS data format")
+        
+        timestamp_str = match.group(1)
+        gps_data = match.group(2)
+        
+        parts = gps_data.split(',')
+        if len(parts) < 2:
+            raise HTTPException(status_code=400, detail="Invalid GPS coordinates format")
+        
+        lat = float(parts[0])
+        lon = float(parts[1])
+        
         if lat == 0.0 and lon == 0.0:
-            raise HTTPException(
-                status_code=400, 
-                detail="Invalid GPS coordinates: location is 0.0, 0.0"
-            )
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid GPS data format")
-    
-    # External Validation
-    if not await validate_with_external("validate_gps", latest_gps_data, is_json=True):
-         raise HTTPException(status_code=400, detail="External validation failed for GPS")
+            raise HTTPException(status_code=400, detail="Invalid GPS coordinates: location is 0.0, 0.0")
+        
+        gps_result = {
+            "latitude": str(lat),
+            "longitude": str(lon),
+            "timestamp": timestamp_str
+        }
+        
+        # External Validation
+        if not await validate_with_external("validate_gps", gps_result, is_json=True):
+             raise HTTPException(status_code=400, detail="External validation failed for GPS")
 
-    return {"status": "success", "data": latest_gps_data}
+        return {"status": "success", "data": gps_result}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"[GPS API] Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error reading GPS data: {str(e)}")
 
 class SignatureRequest(BaseModel):
     image: str # Base64 encoded image

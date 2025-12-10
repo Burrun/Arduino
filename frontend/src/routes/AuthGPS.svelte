@@ -1,27 +1,41 @@
 <script>
+    import { onMount, onDestroy } from "svelte";
     import Button from "../lib/Button.svelte";
     import StepIndicator from "../lib/StepIndicator.svelte";
     import { currentStep, authData } from "../lib/store";
     import { api } from "../lib/api";
 
     let status = "idle";
-    let message = "Acquiring GPS signal...";
+    let message = "Waiting for GPS data...";
     let location = null;
+    let pollInterval = null;
 
-    async function getLocation() {
-        status = "scanning";
-        message = "Triangulating...";
+    async function pollGPS() {
         try {
             const res = await api.getGPS();
             location = res.data.data;
             $authData.gps = location;
             status = "success";
-            message = `Location found: ${location.latitude}, ${location.longitude}`;
+            message = `Location: ${location.latitude}, ${location.longitude}`;
         } catch (e) {
-            status = "error";
-            message = "GPS signal lost. Try again.";
+            // Don't show error while waiting for first GPS data
+            if (status !== "success") {
+                message = "Waiting for GPS data...";
+            }
         }
     }
+
+    onMount(() => {
+        // Poll GPS every 2 seconds
+        pollGPS();
+        pollInterval = setInterval(pollGPS, 2000);
+    });
+
+    onDestroy(() => {
+        if (pollInterval) {
+            clearInterval(pollInterval);
+        }
+    });
 
     function next() {
         $currentStep = 7; // Go to Signature
@@ -48,16 +62,10 @@
 
     <div class="footer">
         <Button onClick={() => ($currentStep = 5)}>Back</Button>
-        {#if status !== "success"}
-            <Button
-                primary
-                onClick={getLocation}
-                disabled={status === "scanning"}
-            >
-                {status === "scanning" ? "Locating..." : "Get Location"}
-            </Button>
-        {:else}
+        {#if status === "success" && location}
             <Button primary onClick={next}>Next</Button>
+        {:else}
+            <div class="waiting-text">Waiting for GPS signal...</div>
         {/if}
     </div>
 </div>
@@ -80,5 +88,9 @@
     .coords {
         margin-top: 10px;
         font-family: monospace;
+    }
+    .waiting-text {
+        color: #888;
+        font-style: italic;
     }
 </style>
