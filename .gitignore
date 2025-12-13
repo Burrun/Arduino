@@ -16,9 +16,9 @@ venv/
 *.swp
 Thumbs.db
 *.DS_Store
-data/
-gps/
-images/
+/data
+/gps
+/images
 
 #
 *.Identifier
