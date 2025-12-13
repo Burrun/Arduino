@@ -8,13 +8,6 @@ const API_BASE = '/api';
 export const api = {
     // Sensor APIs (local)
     getRTC: () => axios.get(`${API_BASE}/rtc`),
-    captureFingerprint: () => axios.post(`${API_BASE}/fingerprint`),
-    captureCamera: () => axios.get(`${API_BASE}/camera`),
-    getGPS: () => axios.get(`${API_BASE}/gps`),
-
-    // Status check APIs (for file watcher)
-    getCameraStatus: () => axios.get(`${API_BASE}/camera/status`),
-    getGPSStatus: () => axios.get(`${API_BASE}/gps/status`),
 
     // Legacy signature endpoint (local storage only)
     captureSignature: (imageData) => axios.post(`${API_BASE}/signature`, { image: imageData }),

@@ -1,32 +1,18 @@
 <script>
-    import { onMount, onDestroy } from "svelte";
+    import { onMount } from "svelte";
     import Button from "../lib/Button.svelte";
     import StepIndicator from "../lib/StepIndicator.svelte";
-    import { currentStep, authData } from "../lib/store";
+    import { currentStep, authData, sensorStatus, logId } from "../lib/store";
     import { api } from "../lib/api";
 
     let status = "idle";
-    let message = "Waiting for GPS data...";
-    let location = null;
-    let pollInterval = null;
-    let hasFileUpdate = false;
+    let message = "GPS ready! Click to capture and verify.";
     let countdown = 0;
 
-    async function checkGPSStatus() {
-        try {
-            const res = await api.getGPSStatus();
-            if (res.data.hasUpdate) {
-                hasFileUpdate = true;
-                if (status === "idle") {
-                    message = "GPS ready! Click to capture location.";
-                }
-            }
-        } catch (e) {
-            // Ignore errors during polling
-        }
-    }
+    // Check if GPS was verified in Checklist
+    $: isGPSReady = $sensorStatus.gps;
 
-    async function captureGPS() {
+    async function captureAndVerify() {
         status = "capturing";
         countdown = 5;
         message = `Capturing in ${countdown} seconds...`;
@@ -37,21 +23,21 @@
             if (countdown > 0) {
                 message = `Capturing in ${countdown} seconds...`;
             } else {
-                message = "Processing...";
+                message = "Verifying with server...";
                 clearInterval(countdownInterval);
             }
         }, 1000);
 
         try {
-            // This API call includes 5-second delay on server side
-            const res = await api.getGPS();
-            location = res.data.data;
-            $authData.gps = location;
+            // This API call captures GPS and sends to AuthBox for verification
+            const res = await api.verifyGPS(0, 0); // Server will capture GPS if lat/lon are 0
+            $authData.gps = true;
             status = "success";
-            message = `Location: ${location.latitude}, ${location.longitude}`;
+            message = "GPS verification complete!";
         } catch (e) {
             status = "error";
-            message = "GPS capture failed. Try again.";
+            message =
+                e.response?.data?.detail || "Verification failed. Try again.";
         }
     }
 
@@ -60,14 +46,8 @@
     }
 
     onMount(() => {
-        // Poll GPS status every 2 seconds
-        checkGPSStatus();
-        pollInterval = setInterval(checkGPSStatus, 2000);
-    });
-
-    onDestroy(() => {
-        if (pollInterval) {
-            clearInterval(pollInterval);
+        if (!isGPSReady) {
+            message = "GPS not available. Please check System Check.";
         }
     });
 </script>
@@ -79,14 +59,12 @@
     <div class="content center column">
         <div
             class="map-box"
-            class:ready={hasFileUpdate}
+            class:ready={isGPSReady}
             class:success={status === "success"}
         >
-            {#if status === "success" && location}
+            {#if status === "success"}
                 <div class="pin">📍</div>
-                <div class="coords success-text">
-                    {location.latitude}<br />{location.longitude}
-                </div>
+                <div class="coords success-text">Verified!</div>
             {:else if status === "capturing"}
                 <div class="capturing-text">
                     {#if countdown > 0}
@@ -95,10 +73,10 @@
                         Processing...
                     {/if}
                 </div>
-            {:else if hasFileUpdate}
+            {:else if isGPSReady}
                 <div class="ready-text">🛰️ GPS Ready</div>
             {:else}
-                <div class="placeholder">Waiting for GPS...</div>
+                <div class="placeholder">GPS not available</div>
             {/if}
         </div>
         <p class="status-text">{message}</p>
@@ -109,10 +87,10 @@
         {#if status !== "success"}
             <Button
                 primary
-                onClick={captureGPS}
-                disabled={status === "capturing" || !hasFileUpdate}
+                onClick={captureAndVerify}
+                disabled={status === "capturing" || !isGPSReady}
             >
-                {status === "capturing" ? message : "Capture Location"}
+                {status === "capturing" ? message : "Capture & Verify"}
             </Button>
         {:else}
             <Button primary onClick={next}>Next</Button>

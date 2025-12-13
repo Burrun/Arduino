@@ -1,7 +1,8 @@
 <script>
+    import { onMount } from "svelte";
     import Button from "../lib/Button.svelte";
     import StepIndicator from "../lib/StepIndicator.svelte";
-    import { currentStep, authData } from "../lib/store";
+    import { currentStep, authData, sensorStatus, logId } from "../lib/store";
     import { api } from "../lib/api";
 
     let status = "idle"; // idle, scanning, success, error
@@ -9,7 +10,10 @@
     let countdown = 30;
     let intervalId = null;
 
-    async function scan() {
+    // Check if fingerprint was verified in Checklist
+    $: isFingerprintReady = $sensorStatus.fingerprint;
+
+    async function scanAndVerify() {
         status = "scanning";
         message = "Scanning... Please keep your finger still";
         countdown = 30;
@@ -23,14 +27,15 @@
         }, 1000);
 
         try {
-            const res = await api.captureFingerprint();
-            $authData.fingerprint = res.data.path;
+            // This API call captures fingerprint and sends to AuthBox for verification
+            const res = await api.verifyFingerprint();
+            $authData.fingerprint = true;
             status = "success";
-            message = "Fingerprint captured!";
+            message = "Fingerprint verification complete!";
             clearInterval(intervalId);
         } catch (e) {
             status = "error";
-            message = "Scan failed. Try again.";
+            message = e.response?.data?.detail || "Scan failed. Try again.";
             clearInterval(intervalId);
         }
     }
@@ -38,6 +43,13 @@
     function next() {
         $currentStep = 4; // Go to Camera
     }
+
+    onMount(() => {
+        if (!isFingerprintReady) {
+            message =
+                "Fingerprint sensor not available. Please check System Check.";
+        }
+    });
 </script>
 
 <div class="full-screen column">
@@ -47,6 +59,7 @@
     <div class="content center column">
         <div
             class="icon-box"
+            class:ready={isFingerprintReady && status === "idle"}
             class:success={status === "success"}
             class:error={status === "error"}
         >
@@ -61,8 +74,12 @@
     <div class="footer">
         <Button onClick={() => ($currentStep = 2)}>Back</Button>
         {#if status !== "success"}
-            <Button primary onClick={scan} disabled={status === "scanning"}>
-                {status === "scanning" ? "Scanning..." : "Scan Fingerprint"}
+            <Button
+                primary
+                onClick={scanAndVerify}
+                disabled={status === "scanning" || !isFingerprintReady}
+            >
+                {status === "scanning" ? "Scanning..." : "Scan & Verify"}
             </Button>
         {:else}
             <Button primary onClick={next}>Next</Button>

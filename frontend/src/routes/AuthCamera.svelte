@@ -1,32 +1,18 @@
 <script>
-    import { onMount, onDestroy } from "svelte";
+    import { onMount } from "svelte";
     import Button from "../lib/Button.svelte";
     import StepIndicator from "../lib/StepIndicator.svelte";
-    import { currentStep, authData } from "../lib/store";
+    import { currentStep, authData, sensorStatus, logId } from "../lib/store";
     import { api } from "../lib/api";
 
     let status = "idle";
-    let message = "Waiting for camera data...";
-    let imagePath = null;
-    let pollInterval = null;
-    let hasFileUpdate = false;
+    let message = "Camera ready! Click to capture and verify.";
     let countdown = 0;
 
-    async function checkCameraStatus() {
-        try {
-            const res = await api.getCameraStatus();
-            if (res.data.hasUpdate && res.data.latestFile) {
-                hasFileUpdate = true;
-                if (status === "idle") {
-                    message = "Camera ready! Click to capture.";
-                }
-            }
-        } catch (e) {
-            // Ignore errors during polling
-        }
-    }
+    // Check if camera was verified in Checklist
+    $: isCameraReady = $sensorStatus.camera;
 
-    async function capture() {
+    async function captureAndVerify() {
         status = "capturing";
         countdown = 5;
         message = `Capturing in ${countdown} seconds...`;
@@ -37,21 +23,21 @@
             if (countdown > 0) {
                 message = `Capturing in ${countdown} seconds...`;
             } else {
-                message = "Processing...";
+                message = "Verifying with server...";
                 clearInterval(countdownInterval);
             }
         }, 1000);
 
         try {
-            // This API call includes 5-second delay on server side
-            const res = await api.captureCamera();
-            $authData.camera = res.data.path;
-            imagePath = res.data.path;
+            // This API call captures image and sends to AuthBox for verification
+            const res = await api.verifyFace();
+            $authData.camera = true;
             status = "success";
-            message = "Photo captured!";
+            message = "Face verification complete!";
         } catch (e) {
             status = "error";
-            message = "Capture failed. Try again.";
+            message =
+                e.response?.data?.detail || "Verification failed. Try again.";
         }
     }
 
@@ -60,14 +46,8 @@
     }
 
     onMount(() => {
-        // Poll camera status every 2 seconds
-        checkCameraStatus();
-        pollInterval = setInterval(checkCameraStatus, 2000);
-    });
-
-    onDestroy(() => {
-        if (pollInterval) {
-            clearInterval(pollInterval);
+        if (!isCameraReady) {
+            message = "Camera not available. Please check System Check.";
         }
     });
 </script>
@@ -79,7 +59,7 @@
     <div class="content center column">
         <div
             class="camera-box"
-            class:ready={hasFileUpdate}
+            class:ready={isCameraReady}
             class:success={status === "success"}
         >
             {#if status === "success"}
@@ -92,10 +72,10 @@
                         Processing...
                     {/if}
                 </div>
-            {:else if hasFileUpdate}
+            {:else if isCameraReady}
                 <div class="placeholder ready-text">📷 Camera Ready</div>
             {:else}
-                <div class="placeholder">Waiting for camera...</div>
+                <div class="placeholder">Camera not available</div>
             {/if}
         </div>
         <p class="status-text">{message}</p>
@@ -106,10 +86,10 @@
         {#if status !== "success"}
             <Button
                 primary
-                onClick={capture}
-                disabled={status === "capturing" || !hasFileUpdate}
+                onClick={captureAndVerify}
+                disabled={status === "capturing" || !isCameraReady}
             >
-                {status === "capturing" ? message : "Take Photo"}
+                {status === "capturing" ? message : "Capture & Verify"}
             </Button>
         {:else}
             <Button primary onClick={next}>Next</Button>

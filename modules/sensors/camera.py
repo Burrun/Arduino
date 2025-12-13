@@ -10,59 +10,58 @@ import time
 import requests
 from pathlib import Path
 from typing import Optional
-
-# Default ESP32-CAM URL
-ESP32_CAM_URL = os.environ.get("ESP32_CAM_URL", "http://192.168.4.1")
-
-def capture_image(
-    save_path: str = "capture.jpg",
-    timeout: int = 10,
-    base_url: Optional[str] = None,
-) -> str:
-    """
-    Capture an image from the ESP32-CAM and save it to disk.
-    Returns the saved file path.
-    """
-    target_url = (base_url or ESP32_CAM_URL).rstrip("/") + "/capture"
-    print(f"[카메라] 이미지 요청 중: {target_url}")
-
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        try:
-            response = requests.get(target_url, timeout=5)
-            if response.status_code == 200:
-                # Save the image
-                save_path = str(save_path)
-                Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-                
-                with open(save_path, "wb") as f:
-                    f.write(response.content)
-                
-                print(f"[카메라] 저장 완료: {save_path}")
-                return save_path
-            else:
-                print(f"[카메라] 응답 오류: {response.status_code}")
-        except requests.RequestException as e:
-            print(f"[카메라] 연결 실패 (재시도 중...): {e}")
-        
-        time.sleep(1)
-    
-    raise TimeoutError("카메라 응답 시간 초과")
+import asyncio
 
 def is_camera_connected(base_url: Optional[str] = None, timeout: int = 3) -> bool:
     """
-    Check if camera data exists in images/ folder.
-    Returns True if there are image files, False otherwise.
+    Check if camera data is being updated in images/ folder.
+    Waits up to timeout seconds for a new image.
+    Returns True if a new image appears, False otherwise.
     """
     try:
         images_dir = Path("images")
         if not images_dir.exists():
             return False
         
-        # Check if there are any .jpg files in the images folder
-        image_files = list(images_dir.glob("*.jpg"))
-        return len(image_files) > 0
+        # Get initial state
+        initial_mtime = 0.0
+        files = list(images_dir.glob("*.jpg"))
+        if files:
+            initial_mtime = max(f.stat().st_mtime for f in files)
+            
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            # Check for updates
+            files = list(images_dir.glob("*.jpg"))
+            if files:
+                current_mtime = max(f.stat().st_mtime for f in files)
+                if current_mtime > initial_mtime:
+                    return True
+            
+            time.sleep(0.1)
+            
+        return False
     except Exception:
         return False
 
-__all__ = ["capture_image", "is_camera_connected"]
+async def get_latest_image(wait_time: int = 5) -> str:
+    """
+    Wait for wait_time seconds, then return the path to the latest image in images/ folder.
+    Raises FileNotFoundError if no images found.
+    """
+    print(f"[CAMERA MODULE] Waiting {wait_time} seconds for latest image...")
+    await asyncio.sleep(wait_time)
+    
+    images_dir = Path("images")
+    if not images_dir.exists():
+        raise FileNotFoundError("No images folder found")
+    
+    # Get the most recent image file
+    image_files = sorted(images_dir.glob("*.jpg"), key=lambda p: p.stat().st_mtime, reverse=True)
+    
+    if not image_files:
+        raise FileNotFoundError("No image received yet")
+        
+    return str(image_files[0])
+
+__all__ = ["capture_image", "is_camera_connected", "get_latest_image"]

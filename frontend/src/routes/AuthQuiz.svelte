@@ -32,17 +32,16 @@
 
 <div class="full-screen column">
     <StepIndicator current={3} />
-    <h2 class="title">News OTP Verification</h2>
+    <h2 class="title">뉴스 OTP 인증</h2>
 
     <div class="content center column">
         <div class="prompt-box">
             <p class="prompt">
-                Enter the name of a reporter who wrote one of the 5 most recent
-                articles<br />
-                in the society section of Donga Ilbo.
+                동아일보 사회면 최신 5개 기사 중<br />
+                하나를 작성한 기자 이름을 입력하세요.
             </p>
             <p class="prompt-note">
-                (If only external source articles exist, enter the source.)
+                (외부 출처 기사만 있는 경우, 출처를 입력하세요.)
             </p>
         </div>
 
@@ -50,7 +49,7 @@
             <input
                 type="text"
                 class="reporter-input"
-                placeholder="Enter reporter name"
+                placeholder="기자 이름 입력"
                 bind:value={reporterName}
                 disabled={isLoading}
                 on:keypress={(e) => e.key === "Enter" && submitOTP()}

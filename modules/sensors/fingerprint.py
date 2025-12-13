@@ -259,4 +259,34 @@ def is_sensor_connected() -> bool:
     result = probe_sensor_handshake()
     return result.get("success", False)
 
-__all__ = ["connect_fingerprint_sensor", "capture_fingerprint_image", "is_sensor_connected", "probe_sensor_handshake"]
+async def capture_fingerprint_async(timeout_sec: int = 15) -> str:
+    """
+    Capture a fingerprint image asynchronously.
+    Returns the saved file path.
+    Raises RuntimeError if capture fails.
+    """
+    import asyncio
+    from datetime import datetime
+    
+    print("[FINGERPRINT MODULE] Starting fingerprint capture...")
+    
+    # Create save directory
+    image_dir = Path("data/fingerprints")
+    image_dir.mkdir(parents=True, exist_ok=True)
+    
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"fingerprint_{timestamp}.pgm"
+    image_path = image_dir / filename
+    
+    # Run blocking fingerprint capture in executor
+    def _capture():
+        finger = connect_fingerprint_sensor()
+        return capture_fingerprint_image(finger, save_path=str(image_path), timeout_sec=timeout_sec)
+    
+    loop = asyncio.get_event_loop()
+    saved_path = await loop.run_in_executor(None, _capture)
+    
+    print(f"[FINGERPRINT MODULE] Captured: {saved_path}")
+    return saved_path
+
+__all__ = ["connect_fingerprint_sensor", "capture_fingerprint_image", "is_sensor_connected", "probe_sensor_handshake", "capture_fingerprint_async"]

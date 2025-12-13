@@ -19,18 +19,12 @@ from modules.sensors import rtc, fingerprint, signature, camera, gps
 app = FastAPI()
 
 # Configuration
-# ESP32-CAM IP Address (Default: 192.168.4.1 for AP mode)
-# If your ESP32 is connected to your router, change this to its assigned IP.
-ESP32_CAM_URL = os.getenv("ESP32_CAM_URL", "http://192.168.4.1")
 
 # AuthBox Backend Server URL (AWS EC2)
-AUTHBOX_SERVER_URL = os.getenv("AUTHBOX_SERVER_URL", "http://35.175.180.106:8080")
+AUTHBOX_SERVER_URL = os.getenv("AUTHBOX_SERVER_URL", "http://3.230.148.137:8080")
 
 # Session timeout in minutes
 SESSION_TIMEOUT_MINUTES = int(os.getenv("SESSION_TIMEOUT_MINUTES", "20"))
-
-# External Server URL for validation (Optional - Legacy, kept for backward compatibility)
-EXTERNAL_SERVER_URL = os.getenv("EXTERNAL_SERVER_URL", "")
 
 # Kiosk browser auto-launch configuration
 AUTO_LAUNCH_KIOSK = os.getenv("AUTO_LAUNCH_KIOSK", "1").lower() not in {"0", "false", "no"}
@@ -101,48 +95,18 @@ def ensure_frontend_assets():
         else:
             print("[FRONTEND] frontend/dist not found. Please run 'npm run build' in the frontend directory.")
 
-# Helper for external validation
-async def validate_with_external(endpoint: str, data: dict | bytes, is_json: bool = True):
-    if not EXTERNAL_SERVER_URL:
-        print(f"[VALIDATION] External URL not set. Skipping validation for {endpoint}.")
-        return True # Local mode: always success
-
-    target_url = f"{EXTERNAL_SERVER_URL.rstrip('/')}/{endpoint.lstrip('/')}"
-    print(f"[VALIDATION] Sending data to {target_url}...")
-    
-    try:
-        if is_json:
-            response = requests.post(target_url, json=data, timeout=5)
-        else:
-            # For binary data (images), we might need to decide how to send.
-            # Usually multipart/form-data or raw body. Let's assume raw body or specific key.
-            # For simplicity in this demo, let's send as raw body if bytes.
-            response = requests.post(target_url, data=data, timeout=5)
-            
-        if response.status_code == 200:
-            print(f"[VALIDATION] Success: {response.status_code}")
-            return True
-        else:
-            print(f"[VALIDATION] Failed: {response.status_code} - {response.text}")
-            return False
-    except Exception as e:
-        print(f"[VALIDATION] Error: {e}")
-        return False
-
-class CamRequest(BaseModel):
-    command: str
 
 # ============================================================
 # AuthBox API - Request/Response Models
 # ============================================================
 
 class LoginRequest(BaseModel):
-    id: str          # 사용자 아이디 (API 명세: id)
+    id: str          # 사용자 id
     password: str    # 사용자 비밀번호
 
 class VerificationStartRequest(BaseModel):
     userId: str      # 인증을 요청하는 수취인의 id
-
+    
 class GPSRequest(BaseModel):
     latitude: float   # GPS 위도
     longitude: float  # GPS 경도
@@ -151,7 +115,7 @@ class OTPRequest(BaseModel):
     userReporter: str  # 사용자가 입력한 기자 이름
 
 class MailRequest(BaseModel):
-    senderEmail: str   # 송금 예정자의 이메일 주소 (API 명세: senderEmail)
+    senderEmail: str   # 송금 예정자의 이메일 주소
 
 # ============================================================
 # Session Management for AuthBox
@@ -229,87 +193,6 @@ class SessionManager:
 # Global session manager
 session_manager = SessionManager(timeout_minutes=SESSION_TIMEOUT_MINUTES)
 
-# Global storage for latest data
-latest_gps_data = {"latitude": "0.0", "longitude": "0.0", "timestamp": ""}
-latest_camera_image = ""
-
-@app.post("/upload_gps")
-async def upload_gps(request: Request):
-    global latest_gps_data
-    try:
-        body = await request.body()
-        gps_text = body.decode("utf-8", errors="ignore").strip()
-        
-        if not gps_text:
-            return {"status": "ERROR", "msg": "empty gps"}, 400
-        
-        # Save to file
-        gps_dir = Path("gps")
-        gps_dir.mkdir(parents=True, exist_ok=True)
-        filename = gps_dir / "gps_data.txt"
-        
-        try:
-            timestamp, _ = rtc.get_current_time(verbose=False)
-        except Exception:
-            from datetime import datetime
-            timestamp = datetime.now()
-        
-        ts = timestamp.strftime("%Y-%m-%d %H:%M:%S")
-        with open(filename, "a", encoding="utf8") as f:
-            f.write(f"[{ts}] {gps_text}\n")
-        
-        # Also parse and store in memory
-        parts = gps_text.split(',')
-        if len(parts) >= 2:
-            latest_gps_data["latitude"] = parts[0]
-            latest_gps_data["longitude"] = parts[1]
-            latest_gps_data["timestamp"] = ts
-        
-        print(f"[GPS] {gps_text} → appended to {filename}")
-        return {"status": "OK"}
-    except Exception as e:
-        print(f"[GPS UPLOAD] Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/upload_image")
-async def upload_image(request: Request):
-    global latest_camera_image
-    try:
-        # ESP32 sends raw bytes as body
-        body = await request.body()
-        
-        image_dir = Path("images")
-        image_dir.mkdir(parents=True, exist_ok=True)
-        
-        # RTC or system time
-        try:
-            timestamp, _ = rtc.get_current_time(verbose=False)
-        except Exception:
-            from datetime import datetime
-            timestamp = datetime.now()
-        
-        filename = f"{timestamp.strftime('%Y%m%d_%H%M%S_%f')}.jpg"
-        image_path = image_dir / filename
-        
-        with open(image_path, "wb") as f:
-            f.write(body)
-            
-        latest_camera_image = str(image_path)
-        print(f"[IMAGE UPLOAD] Received {len(body)} bytes → {image_path}")
-        
-        return {"status": "success", "filename": str(image_path)}
-    except Exception as e:
-        print(f"[IMAGE UPLOAD] Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/rtc")
-async def get_rtc_time():
-    try:
-        timestamp, source = rtc.get_current_time(verbose=False)
-        return {"timestamp": timestamp.isoformat(), "source": source}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.get("/api/sensors/status")
 async def check_sensors():
     """Check the status of all sensors."""
@@ -319,8 +202,9 @@ async def check_sensors():
             "fingerprint": fingerprint.is_sensor_connected(),
             "camera": camera.is_camera_connected(),
             "gps": gps.is_gps_connected(),
-            "signature": True  # Signature is software-based, always available
+            "signature": True  
         }
+
     except Exception as e:
         print(f"[SENSORS] Error checking sensors: {e}")
         # Return partial results even if some checks fail
@@ -331,204 +215,6 @@ async def check_sensors():
             "gps": False,
             "signature": True
         }
-
-@app.post("/api/fingerprint")
-async def scan_fingerprint():
-    try:
-        image_dir = Path("data/fingerprints")
-        image_dir.mkdir(parents=True, exist_ok=True)
-        
-        timestamp, _ = rtc.get_current_time(verbose=False)
-        filename = f"fingerprint_{timestamp.strftime('%Y%m%d_%H%M%S')}.pgm"
-        image_path = image_dir / filename
-
-        finger = fingerprint.connect_fingerprint_sensor()
-        saved_path = fingerprint.capture_fingerprint_image(
-            finger, save_path=str(image_path), timeout_sec=30
-        )
-        
-        # External Validation
-        # Read the file and send it
-        with open(saved_path, "rb") as f:
-            image_bytes = f.read()
-        
-        if not await validate_with_external("validate_fingerprint", image_bytes, is_json=False):
-             raise HTTPException(status_code=400, detail="External validation failed for fingerprint")
-
-        return {"status": "success", "message": "Fingerprint captured and validated", "path": saved_path}
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        # For demo purposes, if hardware is missing, we might want to return a mock response
-        # But for now, let's return the error
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/camera/status")
-async def get_camera_status():
-    """Check if new image file exists in images/ folder"""
-    try:
-        image_dir = Path("images")
-        if not image_dir.exists():
-            return {"hasUpdate": False, "latestFile": None, "latestMtime": None}
-        
-        image_files = sorted(image_dir.glob("*.jpg"), key=lambda p: p.stat().st_mtime, reverse=True)
-        
-        if not image_files:
-            return {"hasUpdate": False, "latestFile": None, "latestMtime": None}
-        
-        latest = image_files[0]
-        return {
-            "hasUpdate": True,
-            "latestFile": str(latest),
-            "latestMtime": latest.stat().st_mtime
-        }
-    except Exception as e:
-        print(f"[CAMERA STATUS] Error: {e}")
-        return {"hasUpdate": False, "latestFile": None, "latestMtime": None}
-
-@app.get("/api/camera")
-async def get_camera_image():
-    """Wait 5 seconds then get the latest image from images/ folder"""
-    global latest_camera_image
-    try:
-        import asyncio
-        
-        # 5-second delay to ensure ESP32 has sent the latest image
-        print("[CAMERA API] Waiting 5 seconds for latest image...")
-        await asyncio.sleep(5)
-        
-        image_dir = Path("images")
-        if not image_dir.exists():
-            raise HTTPException(status_code=404, detail="No images folder found")
-        
-        # Get the most recent image file
-        image_files = sorted(image_dir.glob("*.jpg"), key=lambda p: p.stat().st_mtime, reverse=True)
-        
-        if not image_files:
-            raise HTTPException(status_code=404, detail="No image received yet")
-        
-        latest_image = str(image_files[0])
-        
-        # Store in global variable for AuthBox verification
-        latest_camera_image = latest_image
-        
-        # External Validation
-        with open(latest_image, "rb") as f:
-            image_bytes = f.read()
-            
-        if not await validate_with_external("validate_camera", image_bytes, is_json=False):
-             raise HTTPException(status_code=400, detail="External validation failed for camera")
-
-        print(f"[CAMERA API] Returning latest image: {latest_image}")
-        return {"status": "success", "message": "Camera captured", "path": latest_image}
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        print(f"[CAMERA API] Error: {e}")
-        raise HTTPException(status_code=500, detail=f"Error reading camera image: {str(e)}")
-
-@app.get("/api/gps/status")
-async def get_gps_status():
-    """Check if new GPS data exists in gps/gps_data.txt"""
-    try:
-        gps_file = Path("gps/gps_data.txt")
-        
-        if not gps_file.exists():
-            return {"hasUpdate": False, "latestMtime": None}
-        
-        mtime = gps_file.stat().st_mtime
-        return {
-            "hasUpdate": True,
-            "latestMtime": mtime
-        }
-    except Exception as e:
-        print(f"[GPS STATUS] Error: {e}")
-        return {"hasUpdate": False, "latestMtime": None}
-
-@app.get("/api/gps")
-async def get_gps_location():
-    """Wait 5 seconds then get the latest GPS data from gps_data.txt, fallback to hardcoded location"""
-    global latest_gps_data
-    
-    # Hardcoded fallback coordinates
-    FALLBACK_LAT = 37.49638
-    FALLBACK_LON = 126.9569
-    
-    try:
-        import asyncio
-        import re
-        from datetime import datetime
-        
-        # 5-second delay to ensure ESP32 has sent the latest GPS data
-        print("[GPS API] Waiting 5 seconds for latest GPS data...")
-        await asyncio.sleep(5)
-        
-        gps_file = Path("gps/gps_data.txt")
-        
-        lat = None
-        lon = None
-        timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Try to read from file
-        if gps_file.exists():
-            with open(gps_file, "r", encoding="utf8") as f:
-                lines = f.readlines()
-            
-            if lines:
-                last_line = lines[-1].strip()
-                # Parse: "[2025-12-10 12:30:00] lat,lon"
-                match = re.search(r'\[(.+?)\]\s+(.+)', last_line)
-                
-                if match:
-                    timestamp_str = match.group(1)
-                    gps_data = match.group(2)
-                    parts = gps_data.split(',')
-                    
-                    if len(parts) >= 2:
-                        try:
-                            lat = float(parts[0])
-                            lon = float(parts[1])
-                            # Check for invalid 0.0, 0.0
-                            if lat == 0.0 and lon == 0.0:
-                                lat = None
-                                lon = None
-                        except ValueError:
-                            pass
-        
-        # Use fallback if GPS data not available
-        if lat is None or lon is None:
-            print(f"[GPS API] Using hardcoded fallback: {FALLBACK_LAT}, {FALLBACK_LON}")
-            lat = FALLBACK_LAT
-            lon = FALLBACK_LON
-        
-        gps_result = {
-            "latitude": str(lat),
-            "longitude": str(lon),
-            "timestamp": timestamp_str
-        }
-        
-        # Store in global variable for AuthBox verification
-        latest_gps_data = gps_result
-        
-        # External Validation
-        if not await validate_with_external("validate_gps", gps_result, is_json=True):
-             raise HTTPException(status_code=400, detail="External validation failed for GPS")
-
-        print(f"[GPS API] Returning GPS data: {gps_result}")
-        return {"status": "success", "data": gps_result}
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        print(f"[GPS API] Error: {e}, using fallback")
-        # Even on error, return fallback
-        from datetime import datetime
-        gps_result = {
-            "latitude": str(FALLBACK_LAT),
-            "longitude": str(FALLBACK_LON),
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        latest_gps_data = gps_result
-        return {"status": "success", "data": gps_result}
 
 class SignatureRequest(BaseModel):
     image: str # Base64 encoded image
@@ -623,10 +309,7 @@ async def upload_signature(request: SignatureRequest):
         with open(image_path, "wb") as f:
             f.write(decoded_image)
             
-        # External Validation
-        # Send raw bytes or base64? Let's send raw bytes for consistency with others
-        if not await validate_with_external("validate_signature", decoded_image, is_json=False):
-             raise HTTPException(status_code=400, detail="External validation failed for signature")
+
         
         return {"status": "success", "message": "Signature captured", "path": str(image_path)}
     except HTTPException as he:
@@ -718,23 +401,26 @@ async def authbox_start_verification(request: VerificationStartRequest = None):
 async def authbox_verify_gps(log_id: int, request: GPSRequest = None):
     """
     Step 3-1: GPS 위치 인증
-    ESP32에서 수집된 GPS 데이터 또는 요청 데이터를 AuthBox 서버로 전송합니다.
+    GPS 데이터를 수집하여 AuthBox 서버로 전송합니다.
     """
     if not session_manager.validate_session(log_id):
         raise HTTPException(status_code=401, detail="세션이 만료되었거나 유효하지 않습니다.")
     
-    # 요청 데이터가 있으면 사용, 없으면 ESP32에서 수집된 데이터 사용
-    if request:
-        lat = request.latitude
-        lon = request.longitude
-    else:
-        lat = float(latest_gps_data.get("latitude", 0))
-        lon = float(latest_gps_data.get("longitude", 0))
-    
-    if lat == 0.0 and lon == 0.0:
-        raise HTTPException(status_code=400, detail="유효한 GPS 데이터가 없습니다.")
-        
     try:
+        # 요청 데이터가 있으면 사용, 없으면 gps.py에서 수집
+        if request and request.latitude != 0 and request.longitude != 0:
+            lat = request.latitude
+            lon = request.longitude
+        else:
+            # GPS 데이터 수집 (5초 대기)
+            print("[GPS VERIFICATION] Capturing GPS data...")
+            gps_result = await gps.get_current_location(wait_time=5)
+            lat = float(gps_result.get("latitude", 0))
+            lon = float(gps_result.get("longitude", 0))
+        
+        if lat == 0.0 and lon == 0.0:
+            raise HTTPException(status_code=400, detail="유효한 GPS 데이터가 없습니다.")
+        
         response = requests.post(
             f"{AUTHBOX_SERVER_URL}/api/verification/{log_id}/gps",
             json={"latitude": lat, "longitude": lon},
@@ -785,16 +471,17 @@ async def authbox_verify_otp(log_id: int, request: OTPRequest):
 async def authbox_verify_face(log_id: int):
     """
     Step 3-3: 얼굴 인증
-    ESP32-CAM으로 촬영된 이미지를 AuthBox 서버로 전송합니다.
+    카메라 이미지를 촬영하여 AuthBox 서버로 전송합니다.
     """
     if not session_manager.validate_session(log_id):
         raise HTTPException(status_code=401, detail="세션이 만료되었거나 유효하지 않습니다.")
-    
-    if not latest_camera_image:
-        raise HTTPException(status_code=400, detail="카메라 이미지가 없습니다. 먼저 촬영해주세요.")
         
     try:
-        with open(latest_camera_image, "rb") as f:
+        # 카메라 이미지 캡처 (5초 대기)
+        print("[FACE VERIFICATION] Capturing camera image...")
+        latest_image = await camera.get_latest_image(wait_time=5)
+        
+        with open(latest_image, "rb") as f:
             image_bytes = f.read()
             
         response = requests.post(
@@ -810,8 +497,8 @@ async def authbox_verify_face(log_id: int):
             print(f"[AUTHBOX] Face verification failed: {response.status_code}")
             raise HTTPException(status_code=response.status_code, detail=response.text)
             
-    except FileNotFoundError:
-        raise HTTPException(status_code=400, detail="카메라 이미지 파일을 찾을 수 없습니다.")
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=400, detail=f"카메라 이미지를 찾을 수 없습니다: {str(e)}")
     except requests.exceptions.RequestException as e:
         print(f"[AUTHBOX] Face verification error: {e}")
         raise HTTPException(status_code=500, detail=f"AuthBox 서버 연결 실패: {str(e)}")
@@ -840,8 +527,18 @@ async def authbox_verify_fingerprint(log_id: int):
             finger, save_path=str(image_path), timeout_sec=15
         )
         
+        # PGM 파일을 PNG로 변환하여 전송
+        from PIL import Image
+        import io
+
         with open(saved_path, "rb") as f:
-            image_bytes = f.read()
+            # PGM 파일 읽기
+            pgm_image = Image.open(f)
+            
+            # PNG로 변환 (메모리 상에서)
+            img_byte_arr = io.BytesIO()
+            pgm_image.save(img_byte_arr, format='PNG')
+            image_bytes = img_byte_arr.getvalue()
             
         response = requests.post(
             f"{AUTHBOX_SERVER_URL}/api/verification/{log_id}/fingerprint",
