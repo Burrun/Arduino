@@ -21,7 +21,7 @@ app = FastAPI()
 # Configuration
 
 # AuthBox Backend Server URL (AWS EC2)
-AUTHBOX_SERVER_URL = os.getenv("AUTHBOX_SERVER_URL", "http://3.230.148.137:8080")
+AUTHBOX_SERVER_URL = os.getenv("AUTHBOX_SERVER_URL", "http://98.80.104.6:8080")
 
 # Session timeout in minutes
 SESSION_TIMEOUT_MINUTES = int(os.getenv("SESSION_TIMEOUT_MINUTES", "20"))
