@@ -117,11 +117,7 @@
         <Button onClick={() => ($currentStep = 3)}>Back</Button>
 
         {#if status === "idle" || status === "error"}
-            <Button
-                primary
-                onClick={capture}
-                disabled={status === "capturing" || !isCameraReady}
-            >
+            <Button primary onClick={capture} disabled={!isCameraReady}>
                 Capture
             </Button>
         {:else if status === "preview"}
