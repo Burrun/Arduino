@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional
 import asyncio
 
-def is_camera_connected(base_url: Optional[str] = None, timeout: int = 3) -> bool:
+def is_camera_connected(base_url: Optional[str] = None, timeout: int = 5) -> bool:
     """
     Check if camera data is being updated in images/ folder.
     Waits up to timeout seconds for a new image.

@@ -69,7 +69,7 @@ def _parse_nmea_sentence(sentence: str) -> Optional[Tuple[float, float]]:
     return None
 
 
-def is_gps_connected(base_url: Optional[str] = None, timeout: int = 3) -> bool:
+def is_gps_connected(base_url: Optional[str] = None, timeout: int = 5) -> bool:
     """
     Check if GPS data is being updated in gps/gps_data.txt.
     Waits up to timeout seconds for a file update.
