@@ -12,6 +12,9 @@ export const api = {
     // Legacy signature endpoint (local storage only)
     captureSignature: (imageData) => axios.post(`${API_BASE}/signature`, { image: imageData }),
 
+    // Camera preview API
+    getLatestCameraImage: () => axios.get(`${API_BASE}/camera/latest`),
+
     // AuthBox verification APIs
     login: (id, password) => axios.post(`${API_BASE}/user/login`, { id, password }),
     startVerification: (userId) => axios.post(`${API_BASE}/verification/start`, { userId }),
@@ -23,9 +26,10 @@ export const api = {
         const currentLogId = get(logId);
         return axios.post(`${API_BASE}/verification/${currentLogId}/otp`, { userReporter });
     },
-    verifyFace: () => {
+    verifyFace: (imageBase64 = null) => {
         const currentLogId = get(logId);
-        return axios.post(`${API_BASE}/verification/${currentLogId}/face`);
+        const body = imageBase64 ? { image: imageBase64 } : {};
+        return axios.post(`${API_BASE}/verification/${currentLogId}/face`, body);
     },
     verifyFingerprint: () => {
         const currentLogId = get(logId);
@@ -40,3 +44,4 @@ export const api = {
         return axios.post(`${API_BASE}/verification/${currentLogId}/mail`, { senderEmail });
     },
 };
+

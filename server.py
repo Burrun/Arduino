@@ -117,6 +117,9 @@ class OTPRequest(BaseModel):
 class MailRequest(BaseModel):
     senderEmail: str   # 송금 예정자의 이메일 주소
 
+class FaceVerificationRequest(BaseModel):
+    image: str = None  # Base64 encoded image (optional, if not provided will capture automatically)
+
 # ============================================================
 # Session Management for AuthBox
 # ============================================================
@@ -215,6 +218,46 @@ async def check_sensors():
             "gps": False,
             "signature": True
         }
+
+
+# ============================================================
+# Camera Preview API
+# ============================================================
+
+@app.get("/api/camera/latest")
+async def get_latest_camera_image():
+    """
+    Get the latest camera image as base64 for preview.
+    Waits up to 5 seconds for a new image from ESP32-CAM.
+    """
+    import base64
+    
+    try:
+        print("[CAMERA API] Waiting for latest image...")
+        image_path = await camera.get_latest_image(wait_time=5)
+        
+        with open(image_path, "rb") as f:
+            image_bytes = f.read()
+        
+        # Encode to base64
+        image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+        
+        # Determine content type
+        content_type = "image/jpeg"
+        if image_path.lower().endswith(".png"):
+            content_type = "image/png"
+        
+        return {
+            "status": "success",
+            "image": f"data:{content_type};base64,{image_base64}",
+            "path": image_path
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"No camera image available: {str(e)}")
+    except Exception as e:
+        print(f"[CAMERA API] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 class SignatureRequest(BaseModel):
     image: str # Base64 encoded image
@@ -468,21 +511,31 @@ async def authbox_verify_otp(log_id: int, request: OTPRequest):
 
 
 @app.post("/api/verification/{log_id}/face")
-async def authbox_verify_face(log_id: int):
+async def authbox_verify_face(log_id: int, request: FaceVerificationRequest = None):
     """
     Step 3-3: 얼굴 인증
-    카메라 이미지를 촬영하여 AuthBox 서버로 전송합니다.
+    프론트엔드에서 전달받은 이미지 또는 자동 캡처한 이미지를 AuthBox 서버로 전송합니다.
     """
+    import base64
+    
     if not session_manager.validate_session(log_id):
         raise HTTPException(status_code=401, detail="세션이 만료되었거나 유효하지 않습니다.")
         
     try:
-        # 카메라 이미지 캡처 (5초 대기)
-        print("[FACE VERIFICATION] Capturing camera image...")
-        latest_image = await camera.get_latest_image(wait_time=5)
-        
-        with open(latest_image, "rb") as f:
-            image_bytes = f.read()
+        # 프론트엔드에서 이미지를 전달받았으면 사용, 아니면 자동 캡처
+        if request and request.image:
+            print("[FACE VERIFICATION] Using image from frontend...")
+            image_data = request.image
+            if "," in image_data:
+                image_data = image_data.split(",")[1]
+            image_bytes = base64.b64decode(image_data)
+        else:
+            # 카메라 이미지 캡처 (5초 대기)
+            print("[FACE VERIFICATION] Capturing camera image...")
+            latest_image = await camera.get_latest_image(wait_time=5)
+            
+            with open(latest_image, "rb") as f:
+                image_bytes = f.read()
             
         response = requests.post(
             f"{AUTHBOX_SERVER_URL}/api/verification/{log_id}/face",
